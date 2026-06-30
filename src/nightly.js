@@ -2,21 +2,16 @@ import { getSetting, setSetting } from './settings.js';
 import { getUpcomingEvents } from './calendar.js';
 import { checkCalendarForFlights } from './flightTracker.js';
 
-const DEFAULT_HOUR = 0;
-const DEFAULT_MINUTE = 0;
+const DEFAULT_TIME = '00:00';
 
 let nightlyTimeout = null;
 
 export function getNightlyTime() {
-  return {
-    hour: parseInt(getSetting('nightlyHour', 'NIGHTLY_HOUR', DEFAULT_HOUR), 10),
-    minute: parseInt(getSetting('nightlyMinute', 'NIGHTLY_MINUTE', DEFAULT_MINUTE), 10),
-  };
+  return getSetting('nightlyTime', 'NIGHTLY_TIME', DEFAULT_TIME);
 }
 
-export function setNightlyTime(hour, minute) {
-  setSetting('nightlyHour', hour);
-  setSetting('nightlyMinute', minute);
+export function setNightlyTime(hhmm) {
+  setSetting('nightlyTime', hhmm);
   scheduleNightlyChecks();
 }
 
@@ -59,7 +54,7 @@ export function scheduleNightlyChecks() {
   }
 
   const tz = getSetting('briefTimezone', 'DAILY_BRIEF_TIMEZONE', 'UTC');
-  const { hour: targetHour, minute: targetMinute } = getNightlyTime();
+  const [targetHour, targetMinute] = getNightlyTime().split(':').map(Number);
 
   const now = new Date();
   const parts = new Intl.DateTimeFormat('en-US', {
@@ -77,7 +72,7 @@ export function scheduleNightlyChecks() {
   if (msUntilNext <= 0) msUntilNext += 24 * 60 * 60 * 1000;
 
   const minutesUntil = Math.round(msUntilNext / 60000);
-  console.log(`🌙 Nightly checks scheduled in ${minutesUntil} min (${String(targetHour).padStart(2, '0')}:${String(targetMinute).padStart(2, '0')} ${tz})`);
+  console.log(`🌙 Nightly checks scheduled in ${minutesUntil} min (${getNightlyTime()} ${tz})`);
 
   nightlyTimeout = setTimeout(async () => {
     await runNightlyChecks();

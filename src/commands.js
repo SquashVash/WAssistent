@@ -8,7 +8,7 @@ import { sendMessage } from './messaging.js';
 import { lookupFlight } from './flights.js';
 import { trackFlight, untrackFlight, listTracked, setFlightPollInterval, getFlightPollMinutes } from './flightTracker.js';
 import { handleDMSMessage } from './dms.js';
-import { runNightlyChecks, setNightlyEnabled, isNightlyEnabled } from './nightly.js';
+import { runNightlyChecks, setNightlyEnabled, isNightlyEnabled, setNightlyTime, getNightlyTime } from './nightly.js';
 
 const execAsync = promisify(exec);
 
@@ -81,6 +81,16 @@ export async function handleCommand(msg) {
   if (/^scan$/i.test(lower)) {
     await runNightlyChecks();
     return null;
+  }
+
+  const nightlyTimeMatch = lower.match(/^set nightly time (\d{1,2}):(\d{2})$/i);
+  if (nightlyTimeMatch) {
+    const hour = parseInt(nightlyTimeMatch[1], 10);
+    const minute = parseInt(nightlyTimeMatch[2], 10);
+    if (hour > 23 || minute > 59) return '❌ Invalid time. Use HH:MM (24h format).';
+    const hhmm = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+    setNightlyTime(hhmm);
+    return `✅ Nightly checks set to ${hhmm}`;
   }
 
   if (/^nightly on$/i.test(lower)) {
@@ -225,6 +235,7 @@ export async function handleCommand(msg) {
       text: `*🖥️ Server*
 • \`scan\` — run nightly checks manually
 • \`nightly on/off\` — enable or disable nightly checks
+• \`set nightly time HH:MM\` — set nightly check time (24h)
 • \`logs\` — fetch last 50 log lines
 • \`logs 100\` — fetch last N log lines
 • \`refresh\` — git pull and restart the bot
