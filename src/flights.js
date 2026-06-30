@@ -5,6 +5,14 @@ const AVIATIONSTACK_BASE = 'http://api.aviationstack.com/v1';
 
 // ─── ADS-B ────────────────────────────────────────────────────────────────────
 
+export async function fetchAdsbFlight(callsign) {
+  return fetchAdsb(callsign.trim().toUpperCase().replace(/\s+/g, ''));
+}
+
+export async function fetchAviationStackFlight(callsign) {
+  return fetchAviationStack(callsign.trim().toUpperCase().replace(/\s+/g, ''));
+}
+
 async function fetchAdsb(callsign) {
   try {
     const res = await axios.get(`${ADSB_BASE}/callsign/${callsign}`, { timeout: 10000 });
@@ -141,7 +149,7 @@ function buildMessage(flightData, ac, callsign) {
     if (arr?.estimated && arr.estimated !== arr.scheduled) lines.push(`  Estimated:  ${timeStr(arr.estimated)}`);
     if (arr?.actual)    lines.push(`  Actual:     ${timeStr(arr.actual)}`);
     if (arr?.delay)     lines.push(`  ⚠️ Delay:   ${arr.delay} min`);
-    const arrLocation = [arr?.terminal ? `Terminal ${arr.terminal}` : null, arr?.gate ? `Gate ${arr.gate}` : null].filter(Boolean).join(' · ');
+    const arrLocation = [arr?.terminal ? `Terminal ${arr.terminal}` : null, arr?.gate ? `Gate ${arr.gate}` : null, arr?.baggage ? `Baggage ${arr.baggage}` : null].filter(Boolean).join(' · ');
     if (arrLocation)    lines.push(`  ${arrLocation}`);
   } else {
     lines.push(`✈️ *${callsign}*`);

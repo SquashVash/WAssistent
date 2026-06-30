@@ -3,6 +3,7 @@ import { scheduleDailyBrief, sendDailyBrief } from './brief.js';
 import { handleRemind } from './remind.js';
 import { fetchTicketEmails, setGmailPollInterval, getGmailPollMinutes, fetchMonthlyReceipts } from './gmail.js';
 import { lookupFlight } from './flights.js';
+import { trackFlight, untrackFlight, listTracked, setFlightPollInterval, getFlightPollMinutes } from './flightTracker.js';
 
 export async function handleCommand(body) {
   const remindReply = handleRemind(body.trim());
@@ -81,18 +82,59 @@ export async function handleCommand(body) {
     return await lookupFlight(flightMatch[1]);
   }
 
+  const trackMatch = lower.match(/^track\s+([a-z0-9]+)$/i);
+  if (trackMatch) {
+    const added = trackFlight(trackMatch[1]);
+    return added
+      ? `✈️ Now tracking *${trackMatch[1].toUpperCase()}* — you'll get updates when something changes.`
+      : `✈️ Already tracking *${trackMatch[1].toUpperCase()}*.`;
+  }
+
+  const untrackMatch = lower.match(/^untrack\s+([a-z0-9]+)$/i);
+  if (untrackMatch) {
+    const removed = untrackFlight(untrackMatch[1]);
+    return removed
+      ? `✅ Stopped tracking *${untrackMatch[1].toUpperCase()}*.`
+      : `⚠️ *${untrackMatch[1].toUpperCase()}* wasn't being tracked.`;
+  }
+
+  if (/^tracked$/i.test(lower)) {
+    const flights = listTracked();
+    return flights.length
+      ? `✈️ Tracked flights:\n${flights.map(f => `• ${f}`).join('\n')}`
+      : `✈️ No flights currently being tracked.`;
+  }
+
+  if (/^flight interval$/i.test(lower)) {
+    return `✈️ Flight poll interval: every ${getFlightPollMinutes()} min`;
+  }
+
+  if (/^set flight interval (\d+)(m|h)?$/i.test(lower)) {
+    const match = lower.match(/^set flight interval (\d+)(m|h)?$/i);
+    const value = parseInt(match[1], 10);
+    const unit = (match[2] || 'm').toLowerCase();
+    const minutes = unit === 'h' ? value * 60 : value;
+    if (minutes < 1) return '❌ Interval must be at least 1 minute.';
+    setFlightPollInterval(minutes);
+    return `✅ Flight poll interval set to ${minutes} min.`;
+  }
+
   if (/^settings$/i.test(lower)) {
     const tz = getSetting('briefTimezone', 'DAILY_BRIEF_TIMEZONE', 'UTC');
     const hour = parseInt(getSetting('briefHour', 'DAILY_BRIEF_HOUR', '10'), 10);
     const minute = parseInt(getSetting('briefMinute', 'DAILY_BRIEF_MINUTE', '0'), 10);
     const emailInterval = getGmailPollMinutes();
+    const flightInterval = getFlightPollMinutes();
     return `*⚙️ Current Settings*
 
 *Daily Brief*
 • Time: ${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')} (${tz})
 
 *Emails*
-• Check interval: every ${emailInterval} min`;
+• Check interval: every ${emailInterval} min
+
+*Flights*
+• Poll interval: every ${flightInterval} min`;
   }
 
   if (/^help$/i.test(lower)) {
@@ -113,6 +155,11 @@ export async function handleCommand(body) {
 
 *Flights*
 • \`flight <callsign>\` — look up live flight status (e.g. \`flight ELY006\`)
+• \`track <callsign>\` — get automatic updates when status/delay/gate changes
+• \`untrack <callsign>\` — stop tracking a flight
+• \`tracked\` — list all currently tracked flights
+• \`flight interval\` — show current poll interval
+• \`set flight interval 5m\` — set poll interval (e.g. 2m, 10m)
 
 *Emails*
 • \`fetch emails\` — check Gmail now for ticket PDFs
