@@ -68,6 +68,20 @@ export async function handleCommand(body) {
     return '📧 Email check done — any ticket PDFs have been sent.';
   }
 
+  if (/^settings$/i.test(lower)) {
+    const tz = getSetting('briefTimezone', 'DAILY_BRIEF_TIMEZONE', 'UTC');
+    const hour = parseInt(getSetting('briefHour', 'DAILY_BRIEF_HOUR', '10'), 10);
+    const minute = parseInt(getSetting('briefMinute', 'DAILY_BRIEF_MINUTE', '0'), 10);
+    const emailInterval = getGmailPollMinutes();
+    return `*⚙️ Current Settings*
+
+*Daily Brief*
+• Time: ${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')} (${tz})
+
+*Emails*
+• Check interval: every ${emailInterval} min`;
+  }
+
   if (/^help$/i.test(lower)) {
     return `*Available commands:*
 
@@ -91,6 +105,9 @@ export async function handleCommand(body) {
 
 *Manual Triggers*
 • \`send brief\` — send the daily brief right now
+
+*Other*
+• \`settings\` — show all current settings
 
 Anything else is sent to the AI assistant.`;
   }
