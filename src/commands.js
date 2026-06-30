@@ -130,7 +130,7 @@ export async function handleCommand(msg) {
       : `✈️ Already tracking *${trackMatch[1].toUpperCase()}*.`;
   }
 
-  if (/^untrack \*$/i.test(lower)) {
+  if (/^untrack\s+(\*|all)$/i.test(lower)) {
     const flights = listTracked();
     if (!flights.length) return '⚠️ No flights currently being tracked.';
     clearAllTracked();
@@ -174,7 +174,7 @@ export async function handleCommand(msg) {
       : `❌ Failed to reschedule *${callsign}*.`;
   }
 
-  if (/^unschedule \*$/i.test(lower)) {
+  if (/^unschedule\s+(\*|all)$/i.test(lower)) {
     const scheduled = Object.keys(getScheduled());
     if (!scheduled.length) return '⚠️ No flights currently scheduled.';
     clearAllScheduled();
