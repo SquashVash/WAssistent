@@ -52,8 +52,14 @@ async function fetchAviationStack(callsign) {
     tryFetch({ flight_icao: callsign }),
   ]);
 
-  if (iataRes.status === 'rejected') console.error('❌ AviationStack IATA fetch failed:', iataRes.reason?.message);
-  if (icaoRes.status === 'rejected') console.error('❌ AviationStack ICAO fetch failed:', icaoRes.reason?.message);
+  if (iataRes.status === 'rejected') {
+    console.error('❌ AviationStack IATA fetch failed:', iataRes.reason?.message);
+    console.error('   response body:', JSON.stringify(iataRes.reason?.response?.data));
+  }
+  if (icaoRes.status === 'rejected') {
+    console.error('❌ AviationStack ICAO fetch failed:', icaoRes.reason?.message);
+    console.error('   response body:', JSON.stringify(icaoRes.reason?.response?.data));
+  }
 
   const iata = iataRes.status === 'fulfilled' ? iataRes.value : null;
   const icao = icaoRes.status === 'fulfilled' ? icaoRes.value : null;
