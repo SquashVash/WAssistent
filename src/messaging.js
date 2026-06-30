@@ -32,7 +32,7 @@ export async function sendAdminMessage(text) {
  */
 export async function sendButtons(chatId, content, buttons, footer = '') {
   await axios.post(
-    `${OPENWA_URL}/sessions/${SESSION_ID}/messages/send-buttons`,
+    `${OPENWA_URL}/sessions/${SESSION_ID}/messages/sendButtons`,
     { chatId, content, footer, buttons },
     { headers }
   );
