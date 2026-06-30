@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const ADSB_BASE = 'https://api.adsb.lol/v2';
-const AVIATIONSTACK_BASE = 'http://api.aviationstack.com/v1';
+const AVIATIONSTACK_BASE = 'https://api.aviationstack.com/v1';
 
 // ─── ADS-B ────────────────────────────────────────────────────────────────────
 
@@ -33,13 +33,30 @@ async function fetchAviationStack(callsign) {
 
   const params = { access_key: key, limit: 5 };
 
+  const tryFetch = async (filterParam) => {
+    const res = await axios.get(`${AVIATIONSTACK_BASE}/flights`, {
+      params: { ...params, ...filterParam },
+      timeout: 10000,
+    });
+    // AviationStack signals errors with { success: false, error: {...} }
+    if (res.data?.success === false) {
+      const err = res.data.error;
+      console.error(`❌ AviationStack error [${err?.code}]: ${err?.info}`);
+      return null;
+    }
+    return res.data?.data || null;
+  };
+
   const [iataRes, icaoRes] = await Promise.allSettled([
-    axios.get(`${AVIATIONSTACK_BASE}/flights`, { params: { ...params, flight_iata: callsign }, timeout: 10000 }),
-    axios.get(`${AVIATIONSTACK_BASE}/flights`, { params: { ...params, flight_icao: callsign }, timeout: 10000 }),
+    tryFetch({ flight_iata: callsign }),
+    tryFetch({ flight_icao: callsign }),
   ]);
 
-  const iata = iataRes.status === 'fulfilled' ? iataRes.value.data?.data : null;
-  const icao = icaoRes.status === 'fulfilled' ? icaoRes.value.data?.data : null;
+  if (iataRes.status === 'rejected') console.error('❌ AviationStack IATA fetch failed:', iataRes.reason?.message);
+  if (icaoRes.status === 'rejected') console.error('❌ AviationStack ICAO fetch failed:', icaoRes.reason?.message);
+
+  const iata = iataRes.status === 'fulfilled' ? iataRes.value : null;
+  const icao = icaoRes.status === 'fulfilled' ? icaoRes.value : null;
   const flights = (iata?.length ? iata : null) ?? (icao?.length ? icao : null);
   if (!flights?.length) return null;
 
@@ -170,8 +187,12 @@ export async function lookupFlight(callsign) {
   const flightData = flightRes.status === 'fulfilled' ? flightRes.value : null;
   const ac = adsbRes.status === 'fulfilled' ? adsbRes.value : null;
 
+  if (flightRes.status === 'rejected') {
+    console.error('❌ AviationStack top-level failure:', flightRes.reason?.message);
+  }
+
   if (!flightData && !ac) {
-    return `✈️ No data found for *${clean}*.\n\nThe flight may not exist, have already landed, or not yet be in the system.`;
+    return `✈️ No data found for *${clean}*.\n\nCheck the bot logs for AviationStack error details.`;
   }
 
   return buildMessage(flightData, ac, clean);
