@@ -5,6 +5,9 @@ import { getSetting, setSetting } from './settings.js';
 // Keywords used to identify ticket/booking emails by subject
 const TICKET_KEYWORDS = /ticket|booking|reservation|boarding|e-ticket|confirmation|voucher/i;
 
+// Keywords used to identify receipt emails by subject
+const RECEIPT_KEYWORDS = /receipt|invoice|order|payment|purchase|charged|bill|transaction/i;
+
 const DEFAULT_POLL_MINUTES = 15;
 
 // Tracks message IDs already evaluated this session to avoid redundant API calls
@@ -110,6 +113,64 @@ async function poll() {
 
 export async function fetchTicketEmails() {
   await poll();
+}
+
+export async function fetchMonthlyReceipts() {
+  const auth = getAuthClient();
+  const gmail = google.gmail({ version: 'v1', auth });
+
+  const now = new Date();
+  const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  // Gmail date filter uses YYYY/MM/DD format
+  const after = `${firstOfMonth.getFullYear()}/${String(firstOfMonth.getMonth() + 1).padStart(2, '0')}/01`;
+
+  const res = await gmail.users.messages.list({
+    userId: 'me',
+    q: `after:${after} has:attachment filename:pdf`,
+    maxResults: 100,
+  });
+
+  const messages = res.data.messages || [];
+  console.log(`📬 Gmail: scanning ${messages.length} email(s) with PDF attachments from this month`);
+
+  let sent = 0;
+  for (const { id } of messages) {
+    try {
+      const msg = await gmail.users.messages.get({ userId: 'me', id, format: 'full' });
+      const subject = getHeader(msg.data, 'Subject');
+      const from = getHeader(msg.data, 'From');
+
+      if (!RECEIPT_KEYWORDS.test(subject)) {
+        console.log(`   ↳ skipped "${subject}" (no receipt keywords)`);
+        continue;
+      }
+
+      console.log(`📧 Receipt found: "${subject}" from ${from}`);
+
+      const parts = msg.data.payload?.parts || [];
+      for (const part of parts) {
+        const isPdf = part.mimeType === 'application/pdf' || part.filename?.toLowerCase().endsWith('.pdf');
+        if (!isPdf || !part.body?.attachmentId) continue;
+
+        const filename = part.filename || 'receipt.pdf';
+        const att = await gmail.users.messages.attachments.get({
+          userId: 'me',
+          messageId: id,
+          id: part.body.attachmentId,
+        });
+
+        const base64 = att.data.data.replace(/-/g, '+').replace(/_/g, '/');
+        const caption = `🧾 *${subject}*\nFrom: ${from}`;
+        await sendDocument(process.env.MY_CHAT_ID, base64, filename, caption);
+        console.log(`   ↳ sent "${filename}" ✅`);
+        sent++;
+      }
+    } catch (err) {
+      console.error(`❌ Gmail: failed to process receipt message ${id}:`, err.message);
+    }
+  }
+
+  return sent;
 }
 
 export function setGmailPollInterval(minutes) {

@@ -1,7 +1,7 @@
 import { getSetting, setSetting } from './settings.js';
 import { scheduleDailyBrief, sendDailyBrief } from './brief.js';
 import { handleRemind } from './remind.js';
-import { fetchTicketEmails, setGmailPollInterval, getGmailPollMinutes } from './gmail.js';
+import { fetchTicketEmails, setGmailPollInterval, getGmailPollMinutes, fetchMonthlyReceipts } from './gmail.js';
 
 export async function handleCommand(body) {
   const remindReply = handleRemind(body.trim());
@@ -68,6 +68,13 @@ export async function handleCommand(body) {
     return '📧 Email check done — any ticket PDFs have been sent.';
   }
 
+  if (/^receipts?$/i.test(lower)) {
+    const sent = await fetchMonthlyReceipts();
+    return sent > 0
+      ? `🧾 Done — sent ${sent} receipt PDF(s) from this month.`
+      : `🧾 No receipt PDFs found for this month.`;
+  }
+
   if (/^settings$/i.test(lower)) {
     const tz = getSetting('briefTimezone', 'DAILY_BRIEF_TIMEZONE', 'UTC');
     const hour = parseInt(getSetting('briefHour', 'DAILY_BRIEF_HOUR', '10'), 10);
@@ -100,6 +107,7 @@ export async function handleCommand(body) {
 
 *Emails*
 • \`fetch emails\` — check Gmail now for ticket PDFs
+• \`receipts\` — send all receipt PDFs from this month
 • \`email interval\` — show current check interval
 • \`set email interval 15m\` — set interval (e.g. 30m, 1h)
 
