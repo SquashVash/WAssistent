@@ -10,9 +10,11 @@ import { handleDMSMessage } from './dms.js';
 
 const execAsync = promisify(exec);
 
-export async function handleCommand(body) {
+export async function handleCommand(msg) {
+  const body = typeof msg === 'string' ? msg : (msg?.body ?? '');
+
   // DMS must run first — it intercepts all messages during setup and challenge responses
-  const dmsResult = await handleDMSMessage(body);
+  const dmsResult = await handleDMSMessage(msg);
   if (dmsResult !== false) return dmsResult;
 
   const remindReply = handleRemind(body.trim());
