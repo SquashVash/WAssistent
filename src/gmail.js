@@ -192,9 +192,16 @@ export async function scanForFlightEmails() {
       const scheduled = scheduleFlightTracking(flight.callsign, flight.departureIso);
 
       if (scheduled) {
+        const dep = new Date(flight.departureIso);
+        const trackingStart = new Date(dep.getTime() - 4 * 60 * 60 * 1000);
+        const tz = getSetting('briefTimezone', 'DAILY_BRIEF_TIMEZONE', 'UTC');
+
+        const fmtDate = (d) => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: tz });
+        const fmtTime = (d) => d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: tz });
+
         await sendMessage(
           process.env.MY_CHAT_ID,
-          `✈️ Found flight *${flight.callsign}* in your email. I'll start tracking it 4 hours before departure.`
+          `✈️ Found flight *${flight.callsign}* in your email.\n📅 Departure: ${fmtDate(dep)} at ${fmtTime(dep)}\n⏰ Tracking will start at ${fmtTime(trackingStart)} on ${fmtDate(trackingStart)}`
         );
       }
     } catch (err) {

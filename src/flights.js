@@ -108,7 +108,7 @@ function statusLabel(status) {
 
 // ─── Message builder ──────────────────────────────────────────────────────────
 
-function buildMessage(flightData, ac, callsign) {
+export function buildMessage(flightData, ac, callsign) {
   const lines = [];
 
   // ── Header ──

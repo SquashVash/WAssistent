@@ -1,6 +1,6 @@
 import { getSetting, setSetting } from './settings.js';
 import { sendMessage } from './messaging.js';
-import { fetchAviationStackFlight, fetchAdsbFlight } from './flights.js';
+import { fetchAviationStackFlight, fetchAdsbFlight, buildMessage } from './flights.js';
 
 const DEFAULT_POLL_MINUTES = 2;
 
@@ -109,6 +109,15 @@ function diff(prev, curr) {
   return changes.length ? changes : null;
 }
 
+async function sendStartedTrackingMessage(callsign) {
+  const [flightData, ac] = await Promise.all([
+    fetchAviationStackFlight(callsign),
+    fetchAdsbFlight(callsign),
+  ]);
+  const details = buildMessage(flightData, ac, callsign);
+  await sendMessage(process.env.MY_CHAT_ID, `🛫 *Started Tracking*\n\n${details}`);
+}
+
 async function pollAll() {
   const tracked = getTracked();
   const callsigns = Object.keys(tracked);
@@ -134,7 +143,8 @@ async function pollAll() {
       if (prev) {
         const changes = diff(prev, curr);
         if (changes) {
-          const msg = `✈️ *${callsign} update*\n\n${changes.join('\n')}`;
+          const details = buildMessage(flightData, ac, callsign);
+          const msg = `✈️ *Flight Update — ${callsign}*\n\n*What changed:*\n${changes.join('\n')}\n\n*Current status:*\n${details}`;
           await sendMessage(process.env.MY_CHAT_ID, msg);
           console.log(`   ↳ ${callsign}: sent update (${changes.length} change(s))`);
         } else {
@@ -142,6 +152,7 @@ async function pollAll() {
         }
       } else {
         console.log(`   ↳ ${callsign}: first snapshot taken`);
+        await sendStartedTrackingMessage(callsign);
       }
 
       tracked[callsign].snapshot = curr;
@@ -205,18 +216,19 @@ function armTrackingTimer(callsign, departureMs) {
     const scheduled = getScheduled();
     delete scheduled[callsign];
     saveScheduled(scheduled);
+    sendStartedTrackingMessage(callsign).catch(err => console.error(`❌ Failed to send started tracking message for ${callsign}:`, err.message));
     return;
   }
 
   const hours = (delay / 3600000).toFixed(1);
   console.log(`✈️ ${callsign}: will start tracking in ${hours}h (4h before departure)`);
 
-  setTimeout(() => {
+  setTimeout(async () => {
     trackFlight(callsign);
-    sendMessage(process.env.MY_CHAT_ID, `✈️ Starting to track *${callsign}* — departure in 4 hours.`);
     const scheduled = getScheduled();
     delete scheduled[callsign];
     saveScheduled(scheduled);
+    await sendStartedTrackingMessage(callsign);
   }, delay);
 }
 

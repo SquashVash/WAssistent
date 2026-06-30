@@ -1,9 +1,13 @@
+import { exec } from 'child_process';
+import { promisify } from 'util';
 import { getSetting, setSetting } from './settings.js';
 import { scheduleDailyBrief, sendDailyBrief } from './brief.js';
 import { handleRemind } from './remind.js';
 import { fetchTicketEmails, setGmailPollInterval, getGmailPollMinutes, fetchMonthlyReceipts } from './gmail.js';
 import { lookupFlight } from './flights.js';
 import { trackFlight, untrackFlight, listTracked, setFlightPollInterval, getFlightPollMinutes } from './flightTracker.js';
+
+const execAsync = promisify(exec);
 
 export async function handleCommand(body) {
   const remindReply = handleRemind(body.trim());
@@ -137,43 +141,90 @@ export async function handleCommand(body) {
 • Poll interval: every ${flightInterval} min`;
   }
 
-  if (/^help$/i.test(lower)) {
-    return `*Available commands:*
-
-*Daily Brief*
+  const HELP_CATEGORIES = {
+    brief: {
+      emoji: '📅',
+      label: 'Daily Brief',
+      text: `*📅 Daily Brief*
 • \`brief status\` — show current brief time & timezone
 • \`set brief time HH:MM\` — set daily brief time (24h)
 • \`set brief timezone <tz>\` — set timezone (e.g. Europe/London)
-
-*Reminders*
+• \`send brief\` — send the daily brief right now`,
+    },
+    reminders: {
+      emoji: '⏰',
+      label: 'Reminders',
+      text: `*⏰ Reminders*
 • \`remind me in 30m to <what>\`
 • \`remind me in 2h to <what>\`
 • \`remind me in 1h30m to <what>\`
 • \`remind me at 14:30 to <what>\`
 • \`remind me tomorrow to <what>\`
-• \`remind me tomorrow at 9:00 to <what>\`
-
-*Flights*
+• \`remind me tomorrow at 9:00 to <what>\``,
+    },
+    flights: {
+      emoji: '✈️',
+      label: 'Flights',
+      text: `*✈️ Flights*
 • \`flight <callsign>\` — look up live flight status (e.g. \`flight ELY006\`)
 • \`track <callsign>\` — get automatic updates when status/delay/gate changes
 • \`untrack <callsign>\` — stop tracking a flight
 • \`tracked\` — list all currently tracked flights
 • \`flight interval\` — show current poll interval
-• \`set flight interval 5m\` — set poll interval (e.g. 2m, 10m)
-
-*Emails*
+• \`set flight interval 5m\` — set poll interval (e.g. 2m, 10m)`,
+    },
+    emails: {
+      emoji: '📧',
+      label: 'Emails',
+      text: `*📧 Emails*
 • \`fetch emails\` — check Gmail now for ticket PDFs
 • \`receipts\` — send all receipt PDFs from this month
 • \`email interval\` — show current check interval
-• \`set email interval 15m\` — set interval (e.g. 30m, 1h)
-
-*Manual Triggers*
-• \`send brief\` — send the daily brief right now
-
-*Other*
+• \`set email interval 15m\` — set interval (e.g. 30m, 1h)`,
+    },
+    other: {
+      emoji: '⚙️',
+      label: 'Other',
+      text: `*⚙️ Other*
 • \`settings\` — show all current settings
+• \`refresh\` — git pull and restart the bot
+• \`restart\` — restart the bot via pm2
+• \`help <category>\` — show commands for a category`,
+    },
+  };
 
-Anything else is sent to the AI assistant.`;
+  if (/^help$/i.test(lower)) {
+    const lines = Object.values(HELP_CATEGORIES).map(c => `${c.emoji} *${c.label}*`);
+    return `*Help — choose a category:*\n\n${lines.join('\n')}\n\nSend \`help <category>\` for commands.\nAnything else is sent to the AI assistant.`;
+  }
+
+  if (/^restart$/i.test(lower)) {
+    const appName = process.env.PM2_APP_NAME || 'bot';
+    setTimeout(() => execAsync(`pm2 restart ${appName}`).catch(console.error), 500);
+    return '🔄 Restarting bot...';
+  }
+
+  if (/^refresh$/i.test(lower)) {
+    const appName = process.env.PM2_APP_NAME || 'bot';
+    try {
+      const { stdout } = await execAsync('git pull');
+      const summary = stdout.trim().split('\n').pop();
+      setTimeout(() => execAsync(`pm2 restart ${appName}`).catch(console.error), 500);
+      return `✅ ${summary}\n🔄 Restarting bot...`;
+    } catch (err) {
+      return `❌ git pull failed: ${err.message}`;
+    }
+  }
+
+  const helpCatMatch = lower.match(/^help\s+(.+)$/i);
+  if (helpCatMatch) {
+    const key = helpCatMatch[1].trim().toLowerCase();
+    const cat = HELP_CATEGORIES[key] || Object.values(HELP_CATEGORIES).find(c => c.label.toLowerCase() === key);
+    if (!cat) {
+      const names = Object.keys(HELP_CATEGORIES).join(', ');
+      return `❌ Unknown category. Try: ${names}`;
+    }
+    return cat.text;
   }
 
   return false;
