@@ -205,6 +205,8 @@ export async function handleCommand(msg) {
       label: 'Other',
       text: `*⚙️ Other*
 • \`settings\` — show all current settings
+• \`logs\` — fetch last 50 log lines
+• \`logs 100\` — fetch last N log lines
 • \`refresh\` — git pull and restart the bot
 • \`restart\` — restart the bot via pm2
 • \`help <category>\` — show commands for a category`,
@@ -214,6 +216,22 @@ export async function handleCommand(msg) {
   if (/^help$/i.test(lower)) {
     const lines = Object.values(HELP_CATEGORIES).map(c => `${c.emoji} *${c.label}*`);
     return `*Help — choose a category:*\n\n${lines.join('\n')}\n\nSend \`help <category>\` for commands.\nAnything else is sent to the AI assistant.`;
+  }
+
+  const logsMatch = lower.match(/^logs(?:\s+(\d+))?$/i);
+  if (logsMatch) {
+    const lines = parseInt(logsMatch[1] || '50', 10);
+    const appName = process.env.PM2_APP_NAME || 'bot';
+    try {
+      const { stdout, stderr } = await execAsync(`pm2 logs ${appName} --nostream --lines ${lines}`);
+      const output = (stdout + stderr).trim();
+      if (!output) return '📋 No logs found.';
+      // WhatsApp message limit ~4096 chars — trim from the start if needed
+      const trimmed = output.length > 3800 ? '...\n' + output.slice(-3800) : output;
+      return `📋 *Last ${lines} log lines:*\n\`\`\`\n${trimmed}\n\`\`\``;
+    } catch (err) {
+      return `❌ Failed to fetch logs: ${err.message}`;
+    }
   }
 
   if (/^restart$/i.test(lower)) {
