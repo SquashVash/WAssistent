@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const ADSB_BASE = 'https://api.adsb.lol/v2';
-const AVIATIONSTACK_BASE = 'https://api.aviationstack.com/v1';
+const AVIATIONSTACK_BASE = 'http://api.aviationstack.com/v1';
 
 // ─── ADS-B ────────────────────────────────────────────────────────────────────
 
