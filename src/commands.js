@@ -2,6 +2,7 @@ import { getSetting, setSetting } from './settings.js';
 import { scheduleDailyBrief, sendDailyBrief } from './brief.js';
 import { handleRemind } from './remind.js';
 import { fetchTicketEmails, setGmailPollInterval, getGmailPollMinutes, fetchMonthlyReceipts } from './gmail.js';
+import { lookupFlight } from './flights.js';
 
 export async function handleCommand(body) {
   const remindReply = handleRemind(body.trim());
@@ -75,6 +76,11 @@ export async function handleCommand(body) {
       : `🧾 No receipt PDFs found for this month.`;
   }
 
+  const flightMatch = lower.match(/^flight\s+([a-z0-9]+)$/i);
+  if (flightMatch) {
+    return await lookupFlight(flightMatch[1]);
+  }
+
   if (/^settings$/i.test(lower)) {
     const tz = getSetting('briefTimezone', 'DAILY_BRIEF_TIMEZONE', 'UTC');
     const hour = parseInt(getSetting('briefHour', 'DAILY_BRIEF_HOUR', '10'), 10);
@@ -104,6 +110,9 @@ export async function handleCommand(body) {
 • \`remind me at 14:30 to <what>\`
 • \`remind me tomorrow to <what>\`
 • \`remind me tomorrow at 9:00 to <what>\`
+
+*Flights*
+• \`flight <callsign>\` — look up live flight status (e.g. \`flight ELY006\`)
 
 *Emails*
 • \`fetch emails\` — check Gmail now for ticket PDFs
