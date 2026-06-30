@@ -7,6 +7,7 @@ const SETTINGS_KEY = 'dms';
 let setupState = null;       // { step, data } during setup wizard
 let pendingChallenge = null; // { failedAttempts } when awaiting password response
 let pendingDisable = false;  // waiting for password to confirm DMS disable
+let pendingAction = null;    // { type: 'pause'|'sleep'|'start', parsed? } awaiting password
 let dmsTimer = null;
 let sleepTimer = null;       // setTimeout handle for auto-resume after sleep
 
@@ -122,23 +123,56 @@ export async function handleDMSMessage(msg) {
   const text = body.trim();
   const lower = text.toLowerCase();
 
-  // Pending disable confirmation
-  if (pendingDisable) {
+  // Pending password confirmation (disable / pause / sleep / start)
+  if (pendingDisable || pendingAction) {
     if (/^cancel$/i.test(lower)) {
       pendingDisable = false;
-      return '❌ Cancelled — DMS remains active.';
+      pendingAction = null;
+      return '❌ Cancelled — DMS unchanged.';
     }
     const config = getConfig();
-    if (text === config?.password) {
+    const correct = text === config?.password;
+
+    if (pendingDisable) {
       pendingDisable = false;
+      if (!correct) return '❌ Wrong password — DMS remains active.';
       clearDMSTimer();
       clearSleepTimer();
       pendingChallenge = null;
-      if (config) saveConfig({ ...config, active: false, paused: false, sleepUntil: null });
+      saveConfig({ ...config, active: false, paused: false, sleepUntil: null });
       return '✅ Dead Man\'s Switch disabled.';
     }
-    pendingDisable = false;
-    return '❌ Wrong password — DMS remains active.';
+
+    if (pendingAction) {
+      const action = pendingAction;
+      pendingAction = null;
+      if (!correct) return '❌ Wrong password — DMS unchanged.';
+
+      if (action.type === 'pause') {
+        clearDMSTimer();
+        clearSleepTimer();
+        pendingChallenge = null;
+        saveConfig({ ...config, paused: true, sleepUntil: null });
+        return '⏸ Dead Man\'s Switch paused. Send `DMS start` to resume.';
+      }
+
+      if (action.type === 'sleep') {
+        clearDMSTimer();
+        clearSleepTimer();
+        pendingChallenge = null;
+        const sleepUntil = Date.now() + action.parsed.ms;
+        saveConfig({ ...config, paused: true, sleepUntil });
+        sleepTimer = setTimeout(resumeFromSleep, action.parsed.ms);
+        return `💤 DMS sleeping for ${action.parsed.label}. Switch will auto-resume after that.`;
+      }
+
+      if (action.type === 'start') {
+        clearSleepTimer();
+        saveConfig({ ...config, paused: false, sleepUntil: null });
+        scheduleDMSTimer();
+        return '▶️ Dead Man\'s Switch resumed.';
+      }
+    }
   }
 
   // Pending challenge takes priority over everything
@@ -190,11 +224,8 @@ export async function handleDMSMessage(msg) {
     const config = getConfig();
     if (!config?.active) return '💀 Dead Man\'s Switch is not active.';
     if (config.paused) return '⏸ DMS is already paused. Send `DMS start` to resume.';
-    clearDMSTimer();
-    clearSleepTimer();
-    pendingChallenge = null;
-    saveConfig({ ...config, paused: true, sleepUntil: null });
-    return '⏸ Dead Man\'s Switch paused. Send `DMS start` to resume.';
+    pendingAction = { type: 'pause' };
+    return '🔐 Enter your DMS password to pause the switch:';
   }
 
   if (/^dms sleep (.+)$/i.test(lower)) {
@@ -203,23 +234,16 @@ export async function handleDMSMessage(msg) {
     const sleepArg = lower.match(/^dms sleep (.+)$/i)[1].trim();
     const parsed = parseInterval(sleepArg);
     if (!parsed) return '❌ Couldn\'t parse sleep duration. Use `1d`, `12h`, `2h`, `30m`, etc.';
-    clearDMSTimer();
-    clearSleepTimer();
-    pendingChallenge = null;
-    const sleepUntil = Date.now() + parsed.ms;
-    saveConfig({ ...config, paused: true, sleepUntil });
-    sleepTimer = setTimeout(resumeFromSleep, parsed.ms);
-    return `💤 DMS sleeping for ${parsed.label}. Switch will auto-resume after that.`;
+    pendingAction = { type: 'sleep', parsed };
+    return `🔐 Enter your DMS password to sleep for ${parsed.label}:`;
   }
 
   if (/^dms start$/i.test(lower)) {
     const config = getConfig();
     if (!config?.active) return '💀 Dead Man\'s Switch is not active.';
     if (!config.paused) return '▶️ DMS is already running.';
-    clearSleepTimer();
-    saveConfig({ ...config, paused: false, sleepUntil: null });
-    scheduleDMSTimer();
-    return '▶️ Dead Man\'s Switch resumed.';
+    pendingAction = { type: 'start' };
+    return '🔐 Enter your DMS password to resume the switch:';
   }
 
   if (/^dms status$/i.test(lower)) {
