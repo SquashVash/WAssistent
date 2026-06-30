@@ -1,9 +1,8 @@
 import { getSetting, setSetting } from './settings.js';
 import { scheduleDailyBrief } from './brief.js';
 import { handleRemind } from './remind.js';
-import { sendButtons } from './messaging.js';
 
-export async function handleCommand(chatId, body) {
+export function handleCommand(body) {
   const remindReply = handleRemind(body.trim());
   if (remindReply !== null) return remindReply;
 
@@ -44,20 +43,6 @@ export async function handleCommand(chatId, body) {
     return `📅 Daily brief: ${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')} (${tz})`;
   }
 
-  if (/^test$/i.test(lower)) {
-    await sendButtons(
-      chatId,
-      '🧪 Button test — pick an option:',
-      [
-        { id: 'option_a', text: '✅ Option A' },
-        { id: 'option_b', text: '🔄 Option B' },
-        { id: 'option_c', text: '❌ Option C' },
-      ],
-      'Tap a button to respond'
-    );
-    return '';
-  }
-
   if (/^help$/i.test(lower)) {
     return `*Available commands:*
 
@@ -73,9 +58,6 @@ export async function handleCommand(chatId, body) {
 • \`remind me at 14:30 to <what>\`
 • \`remind me tomorrow to <what>\`
 • \`remind me tomorrow at 9:00 to <what>\`
-
-*Testing*
-• \`test\` — send a sample button message
 
 Anything else is sent to the AI assistant.`;
   }

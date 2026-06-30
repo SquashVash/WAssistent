@@ -23,17 +23,3 @@ export async function sendAdminMessage(text) {
     { headers }
   );
 }
-
-/**
- * @param {string} chatId
- * @param {string} content - Main message body
- * @param {Array<{id: string, text: string}>} buttons - Up to 3 buttons
- * @param {string} [footer] - Optional footer text
- */
-export async function sendButtons(chatId, content, buttons, footer = '') {
-  await axios.post(
-    `${OPENWA_URL}/sessions/${SESSION_ID}/messages/sendButtons`,
-    { chatId, content, footer, buttons },
-    { headers }
-  );
-}

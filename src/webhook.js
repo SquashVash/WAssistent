@@ -22,10 +22,10 @@ async function handleIncomingMessage(msg) {
   console.log(`📩 [${chatId}]: ${body}`);
 
   if (chatId === process.env.MY_CHAT_ID) {
-    const commandReply = await handleCommand(chatId, body);
+    const commandReply = handleCommand(body);
     if (commandReply !== null) {
-      if (commandReply) await sendMessage(chatId, commandReply);
-      console.log(`⚙️  Command handled: ${commandReply || 'buttons'}`);
+      await sendMessage(chatId, commandReply);
+      console.log(`⚙️  Command handled: ${commandReply}`);
       return;
     }
   }
