@@ -4,6 +4,7 @@ import { getSetting, setSetting } from './settings.js';
 import { scheduleDailyBrief, sendDailyBrief } from './brief.js';
 import { handleRemind } from './remind.js';
 import { fetchTicketEmails, setGmailPollInterval, getGmailPollMinutes, fetchMonthlyReceipts } from './gmail.js';
+import { sendMessage } from './messaging.js';
 import { lookupFlight } from './flights.js';
 import { trackFlight, untrackFlight, listTracked, setFlightPollInterval, getFlightPollMinutes } from './flightTracker.js';
 import { handleDMSMessage } from './dms.js';
@@ -77,8 +78,10 @@ export async function handleCommand(msg) {
   }
 
   if (/^fetch emails?$/i.test(lower)) {
-    await fetchTicketEmails();
-    return '📧 Email check done — any ticket PDFs have been sent.';
+    const chatId = process.env.MY_CHAT_ID;
+    const notify = (text) => sendMessage(chatId, text);
+    await fetchTicketEmails(notify);
+    return null;
   }
 
   if (/^receipts?$/i.test(lower)) {
@@ -184,7 +187,7 @@ export async function handleCommand(msg) {
       emoji: '📧',
       label: 'Emails',
       text: `*📧 Emails*
-• \`fetch emails\` — check Gmail now for ticket PDFs
+• \`fetch emails\` — check Gmail now for ticket PDFs and flight bookings
 • \`receipts\` — send all receipt PDFs from this month
 • \`email interval\` — show current check interval
 • \`set email interval 15m\` — set interval (e.g. 30m, 1h)`,

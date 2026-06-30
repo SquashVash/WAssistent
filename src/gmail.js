@@ -42,7 +42,7 @@ function getHeader(message, name) {
   )?.value || '';
 }
 
-async function processMessage(gmail, messageId) {
+async function processMessage(gmail, messageId, notify = null) {
   const msg = await gmail.users.messages.get({ userId: 'me', id: messageId, format: 'full' });
   const subject = getHeader(msg.data, 'Subject');
   const from = getHeader(msg.data, 'From');
@@ -76,6 +76,7 @@ async function processMessage(gmail, messageId) {
 
     await sendDocument(process.env.MY_CHAT_ID, base64, filename, caption);
     console.log(`   ↳ sent "${filename}" to WhatsApp ✅`);
+    await notify?.(`📎 Sent *${filename}*\n_${subject}_`);
     pdfCount++;
   }
 
@@ -91,8 +92,8 @@ async function processMessage(gmail, messageId) {
   });
 }
 
-async function poll() {
-  await scanForFlightEmails().catch(err => console.error('❌ Gmail: flight scan failed:', err.message));
+async function poll(notify = null) {
+  await scanForFlightEmails(notify).catch(err => console.error('❌ Gmail: flight scan failed:', err.message));
 
   const auth = getAuthClient();
   const gmail = google.gmail({ version: 'v1', auth });
@@ -111,9 +112,10 @@ async function poll() {
   for (const { id } of newMessages) {
     seenIds.add(id);
     try {
-      await processMessage(gmail, id);
+      await processMessage(gmail, id, notify);
     } catch (err) {
       console.error(`❌ Gmail: failed to process message ${id}:`, err.message);
+      await notify?.(`❌ Failed to process email: ${err.message}`);
     }
   }
 }
@@ -148,7 +150,7 @@ function extractEmailBody(payload) {
 // Tracks message IDs already scanned for flights this session
 const scannedFlightIds = new Set();
 
-export async function scanForFlightEmails() {
+export async function scanForFlightEmails(notify = null) {
   const auth = getAuthClient();
   const gmail = google.gmail({ version: 'v1', auth });
 
@@ -210,8 +212,8 @@ export async function scanForFlightEmails() {
   }
 }
 
-export async function fetchTicketEmails() {
-  await poll();
+export async function fetchTicketEmails(notify = null) {
+  await poll(notify);
 }
 
 export async function fetchMonthlyReceipts() {
