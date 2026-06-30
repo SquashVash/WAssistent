@@ -200,15 +200,20 @@ export async function handleCommand(msg) {
 • \`DMS start\` — resume a paused switch
 • \`DMS disable\` — permanently disable (requires password)`,
     },
+    server: {
+      emoji: '🖥️',
+      label: 'Server',
+      text: `*🖥️ Server*
+• \`logs\` — fetch last 50 log lines
+• \`logs 100\` — fetch last N log lines
+• \`refresh\` — git pull and restart the bot
+• \`restart\` — restart the bot via pm2`,
+    },
     other: {
       emoji: '⚙️',
       label: 'Other',
       text: `*⚙️ Other*
 • \`settings\` — show all current settings
-• \`logs\` — fetch last 50 log lines
-• \`logs 100\` — fetch last N log lines
-• \`refresh\` — git pull and restart the bot
-• \`restart\` — restart the bot via pm2
 • \`help <category>\` — show commands for a category`,
     },
   };
