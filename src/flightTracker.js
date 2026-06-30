@@ -232,6 +232,14 @@ function armTrackingTimer(callsign, departureMs) {
   }, delay);
 }
 
+export function clearAllTracked() {
+  saveTracked({});
+}
+
+export function clearAllScheduled() {
+  saveScheduled({});
+}
+
 export function unscheduleFlight(callsign) {
   const key = callsign.toUpperCase();
   const scheduled = getScheduled();

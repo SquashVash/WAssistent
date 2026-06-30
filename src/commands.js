@@ -6,7 +6,7 @@ import { handleRemind } from './remind.js';
 import { fetchTicketEmails, setGmailPollInterval, getGmailPollMinutes, fetchMonthlyReceipts } from './gmail.js';
 import { sendMessage } from './messaging.js';
 import { lookupFlight } from './flights.js';
-import { trackFlight, untrackFlight, listTracked, getScheduled, unscheduleFlight, rescheduleFlight, setFlightPollInterval, getFlightPollMinutes } from './flightTracker.js';
+import { trackFlight, untrackFlight, listTracked, getScheduled, unscheduleFlight, rescheduleFlight, clearAllTracked, clearAllScheduled, setFlightPollInterval, getFlightPollMinutes } from './flightTracker.js';
 import { handleDMSMessage } from './dms.js';
 import { runScan, setScanEnabled, isScanEnabled, setScanTime, getScanTime } from './scan.js';
 
@@ -130,6 +130,13 @@ export async function handleCommand(msg) {
       : `✈️ Already tracking *${trackMatch[1].toUpperCase()}*.`;
   }
 
+  if (/^untrack \*$/i.test(lower)) {
+    const flights = listTracked();
+    if (!flights.length) return '⚠️ No flights currently being tracked.';
+    clearAllTracked();
+    return `✅ Stopped tracking all flights (${flights.join(', ')}).`;
+  }
+
   const untrackMatch = lower.match(/^untrack\s+([a-z0-9]+)$/i);
   if (untrackMatch) {
     const removed = untrackFlight(untrackMatch[1]);
@@ -165,6 +172,13 @@ export async function handleCommand(msg) {
     return result
       ? `✅ *${callsign}* rescheduled for departure ${displayDate} at ${timeStr}`
       : `❌ Failed to reschedule *${callsign}*.`;
+  }
+
+  if (/^unschedule \*$/i.test(lower)) {
+    const scheduled = Object.keys(getScheduled());
+    if (!scheduled.length) return '⚠️ No flights currently scheduled.';
+    clearAllScheduled();
+    return `✅ Removed all scheduled flights (${scheduled.join(', ')}).`;
   }
 
   const unscheduleMatch = lower.match(/^unschedule\s+([a-z0-9]+)$/i);
