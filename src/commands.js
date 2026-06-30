@@ -1,5 +1,5 @@
 import { getSetting, setSetting } from './settings.js';
-import { scheduleDailyBrief } from './brief.js';
+import { scheduleDailyBrief, sendDailyBrief } from './brief.js';
 import { handleRemind } from './remind.js';
 import { fetchTicketEmails } from './gmail.js';
 
@@ -44,6 +44,11 @@ export async function handleCommand(body) {
     return `📅 Daily brief: ${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')} (${tz})`;
   }
 
+  if (/^send briefing?$/i.test(lower)) {
+    await sendDailyBrief();
+    return null;
+  }
+
   if (/^fetch emails?$/i.test(lower)) {
     await fetchTicketEmails();
     return '📧 Email check done — any ticket PDFs have been sent.';
@@ -67,6 +72,9 @@ export async function handleCommand(body) {
 
 *Emails*
 • \`fetch emails\` — check Gmail now for ticket PDFs
+
+*Manual Triggers*
+• \`send brief\` — send the daily brief right now
 
 Anything else is sent to the AI assistant.`;
   }
