@@ -1,8 +1,9 @@
 import { getSetting, setSetting } from './settings.js';
 import { scheduleDailyBrief } from './brief.js';
 import { handleRemind } from './remind.js';
+import { fetchTicketEmails } from './gmail.js';
 
-export function handleCommand(body) {
+export async function handleCommand(body) {
   const remindReply = handleRemind(body.trim());
   if (remindReply !== null) return remindReply;
 
@@ -43,6 +44,11 @@ export function handleCommand(body) {
     return `📅 Daily brief: ${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')} (${tz})`;
   }
 
+  if (/^fetch emails?$/i.test(lower)) {
+    await fetchTicketEmails();
+    return '📧 Email check done — any ticket PDFs have been sent.';
+  }
+
   if (/^help$/i.test(lower)) {
     return `*Available commands:*
 
@@ -58,6 +64,9 @@ export function handleCommand(body) {
 • \`remind me at 14:30 to <what>\`
 • \`remind me tomorrow to <what>\`
 • \`remind me tomorrow at 9:00 to <what>\`
+
+*Emails*
+• \`fetch emails\` — check Gmail now for ticket PDFs
 
 Anything else is sent to the AI assistant.`;
   }

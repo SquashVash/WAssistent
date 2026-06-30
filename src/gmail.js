@@ -85,6 +85,10 @@ async function poll() {
   }
 }
 
+export async function fetchTicketEmails() {
+  await poll();
+}
+
 export function startGmailWatcher() {
   console.log('📧 Gmail ticket watcher started (polling every 2 min)');
   poll().catch(err => console.error('❌ Gmail: initial poll failed:', err.message));

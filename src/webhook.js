@@ -22,7 +22,7 @@ async function handleIncomingMessage(msg) {
   console.log(`📩 [${chatId}]: ${body}`);
 
   if (chatId === process.env.MY_CHAT_ID) {
-    const commandReply = handleCommand(body);
+    const commandReply = await handleCommand(body);
     if (commandReply !== null) {
       await sendMessage(chatId, commandReply);
       console.log(`⚙️  Command handled: ${commandReply}`);
