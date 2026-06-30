@@ -108,6 +108,7 @@ async function poll(notify = null) {
   const newMessages = messages.filter(({ id }) => !seenIds.has(id));
 
   console.log(`📬 Gmail: poll — ${newMessages.length} new email(s) with PDF attachments`);
+  await notify?.(`📬 Gmail: poll — ${newMessages.length} new email(s) with PDF attachments`);
 
   for (const { id } of newMessages) {
     seenIds.add(id);
@@ -164,6 +165,7 @@ export async function scanForFlightEmails(notify = null) {
   const newMessages = messages.filter(({ id }) => !scannedFlightIds.has(id));
 
   console.log(`✈️ Gmail: scanning ${newMessages.length} new flight email(s)`);
+  await notify?.(`✈️ Gmail: scanning ${newMessages.length} new flight email(s)`);
 
   for (const { id } of newMessages) {
     scannedFlightIds.add(id);
