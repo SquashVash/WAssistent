@@ -30,15 +30,24 @@ function getHeader(message, name) {
 async function processMessage(gmail, messageId) {
   const msg = await gmail.users.messages.get({ userId: 'me', id: messageId, format: 'full' });
   const subject = getHeader(msg.data, 'Subject');
-
-  if (!TICKET_KEYWORDS.test(subject)) return;
-
   const from = getHeader(msg.data, 'From');
+
+  console.log(`📧 Gmail: scanning — "${subject}" from ${from}`);
+
+  if (!TICKET_KEYWORDS.test(subject)) {
+    console.log(`   ↳ skipped (no ticket keywords in subject)`);
+    return;
+  }
+
   const parts = msg.data.payload?.parts || [];
+  let pdfCount = 0;
 
   for (const part of parts) {
     const isPdf = part.mimeType === 'application/pdf' || part.filename?.toLowerCase().endsWith('.pdf');
     if (!isPdf || !part.body?.attachmentId) continue;
+
+    const filename = part.filename || 'ticket.pdf';
+    console.log(`   ↳ found PDF: "${filename}" — downloading...`);
 
     const att = await gmail.users.messages.attachments.get({
       userId: 'me',
@@ -48,11 +57,15 @@ async function processMessage(gmail, messageId) {
 
     // Gmail returns base64url — convert to standard base64
     const base64 = att.data.data.replace(/-/g, '+').replace(/_/g, '/');
-    const filename = part.filename || 'ticket.pdf';
     const caption = `📧 *${subject}*\nFrom: ${from}`;
 
     await sendDocument(process.env.MY_CHAT_ID, base64, filename, caption);
-    console.log(`📎 Gmail: sent PDF "${filename}" to WhatsApp`);
+    console.log(`   ↳ sent "${filename}" to WhatsApp ✅`);
+    pdfCount++;
+  }
+
+  if (pdfCount === 0) {
+    console.log(`   ↳ matched keywords but no PDF attachments found`);
   }
 
   // Mark processed email as read so it won't appear in future polls
@@ -73,10 +86,13 @@ async function poll() {
     maxResults: 10,
   });
 
-  for (const { id } of res.data.messages || []) {
-    if (seenIds.has(id)) continue;
-    seenIds.add(id);
+  const messages = res.data.messages || [];
+  const newMessages = messages.filter(({ id }) => !seenIds.has(id));
 
+  console.log(`📬 Gmail: poll — ${newMessages.length} new email(s) with PDF attachments`);
+
+  for (const { id } of newMessages) {
+    seenIds.add(id);
     try {
       await processMessage(gmail, id);
     } catch (err) {
