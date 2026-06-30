@@ -194,8 +194,11 @@ export async function handleCommand(msg) {
       label: 'Dead Man\'s Switch',
       text: `*💀 Dead Man\'s Switch*
 • \`DMS\` — set up or reconfigure the dead man\'s switch
-• \`DMS status\` — show current DMS config
-• \`DMS off\` — disable the switch`,
+• \`DMS status\` — show current state
+• \`DMS pause\` — pause until manually resumed
+• \`DMS sleep 2h\` — pause for a set time, then auto-resume
+• \`DMS start\` — resume a paused switch
+• \`DMS disable\` — permanently disable (requires password)`,
     },
     other: {
       emoji: '⚙️',
