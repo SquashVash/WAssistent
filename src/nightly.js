@@ -20,7 +20,7 @@ export function setNightlyTime(hour, minute) {
   scheduleNightlyChecks();
 }
 
-async function runNightlyChecks() {
+export async function runNightlyChecks() {
   console.log('🌙 Nightly checks running...');
 
   const tz = getSetting('briefTimezone', 'DAILY_BRIEF_TIMEZONE', 'UTC');
@@ -34,8 +34,29 @@ async function runNightlyChecks() {
   }
 }
 
+export function setNightlyEnabled(enabled) {
+  setSetting('nightlyEnabled', enabled);
+  if (enabled) {
+    scheduleNightlyChecks();
+  } else {
+    if (nightlyTimeout) clearTimeout(nightlyTimeout);
+    nightlyTimeout = null;
+    console.log('🌙 Nightly checks disabled');
+  }
+}
+
+export function isNightlyEnabled() {
+  const val = getSetting('nightlyEnabled', 'NIGHTLY_ENABLED', 'true');
+  return String(val) !== 'false';
+}
+
 export function scheduleNightlyChecks() {
   if (nightlyTimeout) clearTimeout(nightlyTimeout);
+
+  if (!isNightlyEnabled()) {
+    console.log('🌙 Nightly checks are disabled — skipping schedule');
+    return;
+  }
 
   const tz = getSetting('briefTimezone', 'DAILY_BRIEF_TIMEZONE', 'UTC');
   const { hour: targetHour, minute: targetMinute } = getNightlyTime();

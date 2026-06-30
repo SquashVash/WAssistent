@@ -8,6 +8,7 @@ import { sendMessage } from './messaging.js';
 import { lookupFlight } from './flights.js';
 import { trackFlight, untrackFlight, listTracked, setFlightPollInterval, getFlightPollMinutes } from './flightTracker.js';
 import { handleDMSMessage } from './dms.js';
+import { runNightlyChecks, setNightlyEnabled, isNightlyEnabled } from './nightly.js';
 
 const execAsync = promisify(exec);
 
@@ -75,6 +76,21 @@ export async function handleCommand(msg) {
 
   if (/^email interval$/i.test(lower)) {
     return `📬 Email check interval: every ${getGmailPollMinutes()} min`;
+  }
+
+  if (/^scan$/i.test(lower)) {
+    await runNightlyChecks();
+    return null;
+  }
+
+  if (/^nightly on$/i.test(lower)) {
+    setNightlyEnabled(true);
+    return '🌙 Nightly checks enabled.';
+  }
+
+  if (/^nightly off$/i.test(lower)) {
+    setNightlyEnabled(false);
+    return '🌙 Nightly checks disabled.';
   }
 
   if (/^fetch emails?$/i.test(lower)) {
@@ -207,6 +223,8 @@ export async function handleCommand(msg) {
       emoji: '🖥️',
       label: 'Server',
       text: `*🖥️ Server*
+• \`scan\` — run nightly checks manually
+• \`nightly on/off\` — enable or disable nightly checks
 • \`logs\` — fetch last 50 log lines
 • \`logs 100\` — fetch last N log lines
 • \`refresh\` — git pull and restart the bot
