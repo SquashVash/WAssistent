@@ -31,3 +31,11 @@ export async function sendDocument(chatId, base64Data, filename, caption = '') {
     { headers }
   );
 }
+
+export async function sendFile(chatId, base64Data, filename, mimetype, caption = '') {
+  await axios.post(
+    `${OPENWA_URL}/sessions/${SESSION_ID}/messages/send-document`,
+    { chatId, base64: base64Data, mimetype, filename, caption },
+    { headers }
+  );
+}

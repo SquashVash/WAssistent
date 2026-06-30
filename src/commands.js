@@ -6,10 +6,15 @@ import { handleRemind } from './remind.js';
 import { fetchTicketEmails, setGmailPollInterval, getGmailPollMinutes, fetchMonthlyReceipts } from './gmail.js';
 import { lookupFlight } from './flights.js';
 import { trackFlight, untrackFlight, listTracked, setFlightPollInterval, getFlightPollMinutes } from './flightTracker.js';
+import { handleDMSMessage } from './dms.js';
 
 const execAsync = promisify(exec);
 
 export async function handleCommand(body) {
+  // DMS must run first — it intercepts all messages during setup and challenge responses
+  const dmsResult = await handleDMSMessage(body);
+  if (dmsResult !== false) return dmsResult;
+
   const remindReply = handleRemind(body.trim());
   if (remindReply !== null) return remindReply;
 
@@ -181,6 +186,14 @@ export async function handleCommand(body) {
 • \`receipts\` — send all receipt PDFs from this month
 • \`email interval\` — show current check interval
 • \`set email interval 15m\` — set interval (e.g. 30m, 1h)`,
+    },
+    dms: {
+      emoji: '💀',
+      label: 'Dead Man\'s Switch',
+      text: `*💀 Dead Man\'s Switch*
+• \`DMS\` — set up or reconfigure the dead man\'s switch
+• \`DMS status\` — show current DMS config
+• \`DMS off\` — disable the switch`,
     },
     other: {
       emoji: '⚙️',
