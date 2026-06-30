@@ -4,7 +4,7 @@ import { scheduleDailyBrief } from './src/brief.js';
 import { startGmailWatcher } from './src/gmail.js';
 import { startFlightTracker, restoreScheduledTrackings } from './src/flightTracker.js';
 import { initDMS } from './src/dms.js';
-import { scheduleNightlyChecks } from './src/nightly.js';
+import { scheduleAutoScan } from './src/scan.js';
 
 const PORT = process.env.WEBHOOK_PORT || process.env.PORT || 3000;
 
@@ -14,4 +14,4 @@ startGmailWatcher();
 startFlightTracker();
 restoreScheduledTrackings();
 initDMS();
-scheduleNightlyChecks();
+scheduleAutoScan();
