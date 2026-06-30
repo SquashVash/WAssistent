@@ -26,7 +26,7 @@ async function runNightlyChecks() {
   const tz = getSetting('briefTimezone', 'DAILY_BRIEF_TIMEZONE', 'UTC');
 
   try {
-    const events = await getUpcomingEvents(tz, 7);
+    const events = await getUpcomingEvents(tz, 2);
     const found = checkCalendarForFlights(events);
     console.log(`✈️ Nightly: scheduled tracking for ${found} new flight(s) from calendar`);
   } catch (err) {
