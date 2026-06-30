@@ -35,3 +35,28 @@ export async function getAIReply(chatId, userMessage) {
 }
 
 export { openai };
+
+export async function extractFlightInfo(emailText) {
+  const response = await openai.chat.completions.create({
+    model: 'gpt-4o-mini',
+    messages: [
+      {
+        role: 'system',
+        content: 'You extract flight information from emails. Respond with JSON only, no markdown. If no flight found, respond with null.',
+      },
+      {
+        role: 'user',
+        content: `Extract the flight callsign (airline code + flight number, e.g. "ELY006", "BA123"), departure date and time from this email. Return JSON: {"callsign":"...","departureIso":"YYYY-MM-DDTHH:MM:SS"} or null if not a flight email or info is missing.\n\n${emailText.slice(0, 4000)}`,
+      },
+    ],
+    response_format: { type: 'json_object' },
+  });
+
+  try {
+    const parsed = JSON.parse(response.choices[0].message.content);
+    if (!parsed || !parsed.callsign || !parsed.departureIso) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}

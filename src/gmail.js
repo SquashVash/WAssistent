@@ -1,9 +1,14 @@
 import { google } from 'googleapis';
-import { sendDocument } from './messaging.js';
+import { sendDocument, sendMessage } from './messaging.js';
 import { getSetting, setSetting } from './settings.js';
+import { extractFlightInfo } from './ai.js';
+import { scheduleFlightTracking } from './flightTracker.js';
 
 // Keywords used to identify ticket/booking emails by subject
 const TICKET_KEYWORDS = /ticket|booking|reservation|boarding|e-ticket|confirmation|voucher/i;
+
+// Keywords used to identify flight-related emails
+const FLIGHT_EMAIL_KEYWORDS = /flight|itinerary|boarding pass|e-ticket|airline/i;
 
 // Keywords used to identify receipt emails by subject
 const RECEIPT_KEYWORDS = /receipt|invoice|order|payment|purchase|charged|bill|transaction/i;
@@ -87,6 +92,8 @@ async function processMessage(gmail, messageId) {
 }
 
 async function poll() {
+  await scanForFlightEmails().catch(err => console.error('❌ Gmail: flight scan failed:', err.message));
+
   const auth = getAuthClient();
   const gmail = google.gmail({ version: 'v1', auth });
 
@@ -107,6 +114,91 @@ async function poll() {
       await processMessage(gmail, id);
     } catch (err) {
       console.error(`❌ Gmail: failed to process message ${id}:`, err.message);
+    }
+  }
+}
+
+function extractEmailBody(payload) {
+  if (!payload) return '';
+
+  // Prefer text/plain, fall back to text/html
+  const tryDecode = (part) => {
+    const data = part?.body?.data;
+    if (!data) return null;
+    return Buffer.from(data.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf-8');
+  };
+
+  if (payload.mimeType === 'text/plain') return tryDecode(payload) || '';
+  if (payload.mimeType === 'text/html') return tryDecode(payload) || '';
+
+  const parts = payload.parts || [];
+  const plain = parts.find(p => p.mimeType === 'text/plain');
+  if (plain) return tryDecode(plain) || '';
+  const html = parts.find(p => p.mimeType === 'text/html');
+  if (html) return tryDecode(html) || '';
+
+  // Recurse into multipart
+  for (const part of parts) {
+    const text = extractEmailBody(part);
+    if (text) return text;
+  }
+  return '';
+}
+
+// Tracks message IDs already scanned for flights this session
+const scannedFlightIds = new Set();
+
+export async function scanForFlightEmails() {
+  const auth = getAuthClient();
+  const gmail = google.gmail({ version: 'v1', auth });
+
+  const res = await gmail.users.messages.list({
+    userId: 'me',
+    q: 'is:unread subject:(flight OR itinerary OR boarding OR e-ticket OR airline)',
+    maxResults: 20,
+  });
+
+  const messages = res.data.messages || [];
+  const newMessages = messages.filter(({ id }) => !scannedFlightIds.has(id));
+
+  console.log(`✈️ Gmail: scanning ${newMessages.length} new flight email(s)`);
+
+  for (const { id } of newMessages) {
+    scannedFlightIds.add(id);
+    try {
+      const msg = await gmail.users.messages.get({ userId: 'me', id, format: 'full' });
+      const subject = getHeader(msg.data, 'Subject');
+
+      if (!FLIGHT_EMAIL_KEYWORDS.test(subject)) {
+        console.log(`   ↳ skipped "${subject}" (no flight keywords)`);
+        continue;
+      }
+
+      const body = extractEmailBody(msg.data.payload);
+      if (!body) {
+        console.log(`   ↳ skipped "${subject}" (no body text)`);
+        continue;
+      }
+
+      console.log(`✈️ Extracting flight info from: "${subject}"`);
+      const flight = await extractFlightInfo(body);
+
+      if (!flight) {
+        console.log(`   ↳ no flight info found`);
+        continue;
+      }
+
+      console.log(`   ↳ found: ${flight.callsign} departing ${flight.departureIso}`);
+      const scheduled = scheduleFlightTracking(flight.callsign, flight.departureIso);
+
+      if (scheduled) {
+        await sendMessage(
+          process.env.MY_CHAT_ID,
+          `✈️ Found flight *${flight.callsign}* in your email. I'll start tracking it 4 hours before departure.`
+        );
+      }
+    } catch (err) {
+      console.error(`❌ Gmail: failed to process flight email ${id}:`, err.message);
     }
   }
 }

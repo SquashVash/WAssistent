@@ -164,6 +164,80 @@ async function pollAll() {
   saveTracked(tracked);
 }
 
+function getScheduled() {
+  return getSetting('scheduledFlightTrackings', null, {});
+}
+
+function saveScheduled(scheduled) {
+  setSetting('scheduledFlightTrackings', scheduled);
+}
+
+export function scheduleFlightTracking(callsign, departureIso) {
+  const key = callsign.toUpperCase();
+  const departureMs = new Date(departureIso).getTime();
+  if (isNaN(departureMs)) {
+    console.error(`✈️ scheduleFlightTracking: invalid date "${departureIso}" for ${key}`);
+    return false;
+  }
+
+  const scheduled = getScheduled();
+  if (scheduled[key]) {
+    console.log(`✈️ ${key} already has a scheduled tracking`);
+    return false;
+  }
+
+  scheduled[key] = departureIso;
+  saveScheduled(scheduled);
+
+  armTrackingTimer(key, departureMs);
+  return true;
+}
+
+function armTrackingTimer(callsign, departureMs) {
+  const FOUR_HOURS_MS = 4 * 60 * 60 * 1000;
+  const startMs = departureMs - FOUR_HOURS_MS;
+  const delay = startMs - Date.now();
+
+  if (delay <= 0) {
+    // Already within 4 hours of departure — start tracking immediately
+    console.log(`✈️ ${callsign}: departure is within 4 hours — tracking now`);
+    trackFlight(callsign);
+    const scheduled = getScheduled();
+    delete scheduled[callsign];
+    saveScheduled(scheduled);
+    return;
+  }
+
+  const hours = (delay / 3600000).toFixed(1);
+  console.log(`✈️ ${callsign}: will start tracking in ${hours}h (4h before departure)`);
+
+  setTimeout(() => {
+    trackFlight(callsign);
+    sendMessage(process.env.MY_CHAT_ID, `✈️ Starting to track *${callsign}* — departure in 4 hours.`);
+    const scheduled = getScheduled();
+    delete scheduled[callsign];
+    saveScheduled(scheduled);
+  }, delay);
+}
+
+export function restoreScheduledTrackings() {
+  const scheduled = getScheduled();
+  const entries = Object.entries(scheduled);
+  if (!entries.length) return;
+
+  console.log(`✈️ Restoring ${entries.length} scheduled flight tracking(s)`);
+  for (const [callsign, departureIso] of entries) {
+    const departureMs = new Date(departureIso).getTime();
+    if (isNaN(departureMs) || departureMs < Date.now()) {
+      console.log(`   ↳ ${callsign}: departure passed — removing`);
+      delete scheduled[callsign];
+      continue;
+    }
+    armTrackingTimer(callsign, departureMs);
+  }
+  saveScheduled(scheduled);
+}
+
 export function startFlightTracker() {
   if (pollTimer) clearInterval(pollTimer);
   const minutes = getFlightPollMinutes();
