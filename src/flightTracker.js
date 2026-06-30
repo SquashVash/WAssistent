@@ -146,8 +146,12 @@ async function pollAll() {
 
       tracked[callsign].snapshot = curr;
 
-      // Auto-untrack once landed
-      if (curr.status === 'landed') {
+      // Auto-untrack once airborne or landed
+      if (curr.status === 'active') {
+        console.log(`   ↳ ${callsign}: airborne — removing from tracker`);
+        delete tracked[callsign];
+        await sendMessage(process.env.MY_CHAT_ID, `✈️ *${callsign}* is now airborne. Tracking stopped.`);
+      } else if (curr.status === 'landed') {
         console.log(`   ↳ ${callsign}: landed — removing from tracker`);
         delete tracked[callsign];
         await sendMessage(process.env.MY_CHAT_ID, `✈️ *${callsign}* has landed. Tracking stopped.`);
