@@ -12,6 +12,26 @@ function getAuthClient() {
   return auth;
 }
 
+export async function getUpcomingEvents(timezone = 'UTC', days = 7) {
+  const auth = getAuthClient();
+  const calendar = google.calendar({ version: 'v3', auth });
+  const calendarId = process.env.GOOGLE_CALENDAR_ID || 'primary';
+
+  const now = new Date();
+  const end = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
+
+  const res = await calendar.events.list({
+    calendarId,
+    timeMin: now.toISOString(),
+    timeMax: end.toISOString(),
+    singleEvents: true,
+    orderBy: 'startTime',
+    timeZone: timezone,
+  });
+
+  return res.data.items || [];
+}
+
 export async function getTodaysEvents(timezone = 'UTC') {
   const auth = getAuthClient();
   const calendar = google.calendar({ version: 'v3', auth });

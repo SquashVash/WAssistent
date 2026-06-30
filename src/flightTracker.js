@@ -232,6 +232,35 @@ function armTrackingTimer(callsign, departureMs) {
   }, delay);
 }
 
+export function checkCalendarForFlights(events) {
+  const CALLSIGN_RE = /\b([A-Z]{2,3}\d{1,4})\b/g;
+  const scheduled = getScheduled();
+  const tracked = getTracked();
+  let found = 0;
+
+  for (const event of events) {
+    const departureIso = event.start?.dateTime;
+    if (!departureIso) continue; // skip all-day events
+
+    const text = `${event.summary || ''} ${event.description || ''}`;
+    const matches = [...text.matchAll(CALLSIGN_RE)].map(m => m[1]);
+
+    for (const callsign of matches) {
+      if (scheduled[callsign] || tracked[callsign]) {
+        console.log(`✈️ Calendar: ${callsign} already scheduled/tracked — skipping`);
+        continue;
+      }
+      const result = scheduleFlightTracking(callsign, departureIso);
+      if (result) {
+        console.log(`✈️ Calendar failsafe: scheduled tracking for ${callsign} (${departureIso})`);
+        found++;
+      }
+    }
+  }
+
+  return found;
+}
+
 export function restoreScheduledTrackings() {
   const scheduled = getScheduled();
   const entries = Object.entries(scheduled);
