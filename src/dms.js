@@ -191,7 +191,7 @@ async function handleSetupStep(msg, text) {
   if (step === 'contact') {
     let digits;
 
-    if (msg?.type === 'vcard' && text) {
+    if ((msg?.type === 'vcard' || text.trimStart().startsWith('BEGIN:VCARD')) && text) {
       const waidMatch = text.match(/waid=(\d+)/i);
       if (waidMatch) {
         digits = waidMatch[1];
