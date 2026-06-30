@@ -1,7 +1,7 @@
 import { getSetting, setSetting } from './settings.js';
 import { scheduleDailyBrief, sendDailyBrief } from './brief.js';
 import { handleRemind } from './remind.js';
-import { fetchTicketEmails } from './gmail.js';
+import { fetchTicketEmails, setGmailPollInterval, getGmailPollMinutes } from './gmail.js';
 
 export async function handleCommand(body) {
   const remindReply = handleRemind(body.trim());
@@ -49,6 +49,20 @@ export async function handleCommand(body) {
     return null;
   }
 
+  if (/^set email interval (\d+)(m|h)?$/i.test(lower)) {
+    const match = lower.match(/^set email interval (\d+)(m|h)?$/i);
+    const value = parseInt(match[1], 10);
+    const unit = (match[2] || 'm').toLowerCase();
+    const minutes = unit === 'h' ? value * 60 : value;
+    if (minutes < 1) return '❌ Interval must be at least 1 minute.';
+    setGmailPollInterval(minutes);
+    return `✅ Email check interval set to ${minutes} min.`;
+  }
+
+  if (/^email interval$/i.test(lower)) {
+    return `📬 Email check interval: every ${getGmailPollMinutes()} min`;
+  }
+
   if (/^fetch emails?$/i.test(lower)) {
     await fetchTicketEmails();
     return '📧 Email check done — any ticket PDFs have been sent.';
@@ -72,6 +86,8 @@ export async function handleCommand(body) {
 
 *Emails*
 • \`fetch emails\` — check Gmail now for ticket PDFs
+• \`email interval\` — show current check interval
+• \`set email interval 15m\` — set interval (e.g. 30m, 1h)
 
 *Manual Triggers*
 • \`send brief\` — send the daily brief right now

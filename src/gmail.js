@@ -1,13 +1,20 @@
 import { google } from 'googleapis';
 import { sendDocument } from './messaging.js';
+import { getSetting, setSetting } from './settings.js';
 
 // Keywords used to identify ticket/booking emails by subject
 const TICKET_KEYWORDS = /ticket|booking|reservation|boarding|e-ticket|confirmation|voucher/i;
 
-const POLL_INTERVAL_MS = 2 * 60 * 1000; // 2 minutes
+const DEFAULT_POLL_MINUTES = 15;
 
 // Tracks message IDs already evaluated this session to avoid redundant API calls
 const seenIds = new Set();
+
+let pollTimer = null;
+
+function getPollMs() {
+  return parseInt(getSetting('gmailPollMinutes', 'GMAIL_POLL_MINUTES', DEFAULT_POLL_MINUTES), 10) * 60 * 1000;
+}
 
 function getAuthClient() {
   const { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN } = process.env;
@@ -105,10 +112,21 @@ export async function fetchTicketEmails() {
   await poll();
 }
 
+export function setGmailPollInterval(minutes) {
+  setSetting('gmailPollMinutes', minutes);
+  startGmailWatcher();
+}
+
+export function getGmailPollMinutes() {
+  return parseInt(getSetting('gmailPollMinutes', 'GMAIL_POLL_MINUTES', DEFAULT_POLL_MINUTES), 10);
+}
+
 export function startGmailWatcher() {
-  console.log('📧 Gmail ticket watcher started (polling every 2 min)');
+  if (pollTimer) clearInterval(pollTimer);
+  const minutes = getGmailPollMinutes();
+  console.log(`📧 Gmail ticket watcher started (polling every ${minutes} min)`);
   poll().catch(err => console.error('❌ Gmail: initial poll failed:', err.message));
-  setInterval(() => {
+  pollTimer = setInterval(() => {
     poll().catch(err => console.error('❌ Gmail poll error:', err.message));
-  }, POLL_INTERVAL_MS);
+  }, getPollMs());
 }
