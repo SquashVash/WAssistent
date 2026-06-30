@@ -244,6 +244,8 @@ async function handleSetupStep(msg, text) {
 
   if (step === 'payload') {
     if (isMediaMessage(msg)) {
+      console.log('📎 DMS media message keys:', JSON.stringify(Object.keys(msg)));
+      console.log('📎 DMS media message:', JSON.stringify(msg, null, 2));
       await sendAdminMessage('⏳ Downloading and saving your file...');
       try {
         const { path, filename, mimetype } = await downloadMedia(msg);
