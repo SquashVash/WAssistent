@@ -138,14 +138,32 @@ export async function handleCommand(msg) {
       : `⚠️ *${untrackMatch[1].toUpperCase()}* wasn't being tracked.`;
   }
 
-  const rescheduleMatch = body.match(/^reschedule\s+([a-z0-9]+)\s+(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})$/i);
+  const rescheduleMatch = body.match(/^reschedule\s+([a-z0-9]+)(?:\s+(\d{2}-\d{2}-\d{2}))?\s+(\d{2}:\d{2})$/i);
   if (rescheduleMatch) {
     const callsign = rescheduleMatch[1].toUpperCase();
-    const departureIso = `${rescheduleMatch[2]}T${rescheduleMatch[3]}:00`;
-    if (isNaN(new Date(departureIso).getTime())) return '❌ Invalid date. Use: reschedule <callsign> YYYY-MM-DD HH:MM';
+    const timeStr = rescheduleMatch[3];
+
+    let dateStr;
+    if (rescheduleMatch[2]) {
+      const [dd, mm, yy] = rescheduleMatch[2].split('-');
+      dateStr = `20${yy}-${mm}-${dd}`;
+    } else {
+      const existing = getScheduled()[callsign];
+      if (existing) {
+        dateStr = existing.split('T')[0];
+      } else {
+        const tz = getSetting('briefTimezone', 'DAILY_BRIEF_TIMEZONE', 'UTC');
+        dateStr = new Date().toLocaleDateString('en-CA', { timeZone: tz });
+      }
+    }
+
+    const departureIso = `${dateStr}T${timeStr}:00`;
+    if (isNaN(new Date(departureIso).getTime())) return '❌ Invalid date. Use: reschedule <callsign> DD-MM-YY HH:MM';
+    const [year, month, day] = dateStr.split('-');
+    const displayDate = `${day}-${month}-${year.slice(-2)}`;
     const result = rescheduleFlight(callsign, departureIso);
     return result
-      ? `✅ *${callsign}* rescheduled for departure ${rescheduleMatch[2]} at ${rescheduleMatch[3]}`
+      ? `✅ *${callsign}* rescheduled for departure ${displayDate} at ${timeStr}`
       : `❌ Failed to reschedule *${callsign}*.`;
   }
 
@@ -246,7 +264,8 @@ export async function handleCommand(msg) {
 • \`track <callsign>\` — get automatic updates when status/delay/gate changes
 • \`untrack <callsign>\` — stop tracking a flight
 • \`unschedule <callsign>\` — remove a flight from the tracking schedule
-• \`reschedule <callsign> YYYY-MM-DD HH:MM\` — update a flight's scheduled departure
+• \`reschedule <callsign> HH:MM\` — update departure time (keep existing date)
+• \`reschedule <callsign> DD-MM-YY HH:MM\` — update departure date and time
 • \`tracked\` — list all currently tracked flights
 • \`flight interval\` — show current poll interval
 • \`set flight interval 5m\` — set poll interval (e.g. 2m, 10m)`,
