@@ -1,6 +1,7 @@
 import { getSetting, setSetting } from './settings.js';
 import { getUpcomingEvents } from './calendar.js';
 import { checkCalendarForFlights } from './flightTracker.js';
+import { sendMessage } from './messaging.js';
 
 const DEFAULT_TIME = '00:00';
 
@@ -19,14 +20,23 @@ export async function runScan() {
   console.log('🔍 Scan running...');
 
   const tz = getSetting('briefTimezone', 'DAILY_BRIEF_TIMEZONE', 'UTC');
+  const actions = [];
 
   try {
     const events = await getUpcomingEvents(tz, 2);
     const found = checkCalendarForFlights(events);
-    console.log(`✈️ Scan: scheduled tracking for ${found} new flight(s) from calendar`);
+    actions.push(...found);
   } catch (err) {
     console.error('❌ Scan: calendar flight check failed:', err.message);
+    actions.push(`❌ Calendar check failed: ${err.message}`);
   }
+
+  const summary = actions.length
+    ? `🔍 *Scan complete:*\n${actions.map(a => `• ${a}`).join('\n')}`
+    : '🔍 Scan complete — nothing new found.';
+
+  console.log(summary.replace(/\*/g, ''));
+  await sendMessage(process.env.MY_CHAT_ID, summary);
 }
 
 export function setScanEnabled(enabled) {

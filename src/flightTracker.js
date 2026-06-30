@@ -245,7 +245,7 @@ export function checkCalendarForFlights(events) {
   const CALLSIGN_RE = /\b([A-Z]{2,3})\s?(\d{1,4})\b/g;
   const scheduled = getScheduled();
   const tracked = getTracked();
-  let found = 0;
+  const actions = [];
 
   for (const event of events) {
     const departureIso = event.start?.dateTime;
@@ -261,13 +261,13 @@ export function checkCalendarForFlights(events) {
       }
       const result = scheduleFlightTracking(callsign, departureIso);
       if (result) {
-        console.log(`✈️ Calendar failsafe: scheduled tracking for ${callsign} (${departureIso})`);
-        found++;
+        console.log(`✈️ Calendar: scheduled tracking for ${callsign} (${departureIso})`);
+        actions.push(`Scheduled flight *${callsign}* for tracking`);
       }
     }
   }
 
-  return found;
+  return actions;
 }
 
 export function restoreScheduledTrackings() {
