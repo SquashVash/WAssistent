@@ -233,7 +233,7 @@ function armTrackingTimer(callsign, departureMs) {
 }
 
 export function checkCalendarForFlights(events) {
-  const CALLSIGN_RE = /\b([A-Z]{2,3}\d{1,4})\b/g;
+  const CALLSIGN_RE = /\b([A-Z]{2,3})\s?(\d{1,4})\b/g;
   const scheduled = getScheduled();
   const tracked = getTracked();
   let found = 0;
@@ -243,7 +243,7 @@ export function checkCalendarForFlights(events) {
     if (!departureIso) continue; // skip all-day events
 
     const text = `${event.summary || ''} ${event.description || ''}`;
-    const matches = [...text.matchAll(CALLSIGN_RE)].map(m => m[1]);
+    const matches = [...text.matchAll(CALLSIGN_RE)].map(m => m[1] + m[2]);
 
     for (const callsign of matches) {
       if (scheduled[callsign] || tracked[callsign]) {
