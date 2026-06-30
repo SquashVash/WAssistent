@@ -6,7 +6,7 @@ import { handleRemind } from './remind.js';
 import { fetchTicketEmails, setGmailPollInterval, getGmailPollMinutes, fetchMonthlyReceipts } from './gmail.js';
 import { sendMessage } from './messaging.js';
 import { lookupFlight } from './flights.js';
-import { trackFlight, untrackFlight, listTracked, getScheduled, unscheduleFlight, setFlightPollInterval, getFlightPollMinutes } from './flightTracker.js';
+import { trackFlight, untrackFlight, listTracked, getScheduled, unscheduleFlight, rescheduleFlight, setFlightPollInterval, getFlightPollMinutes } from './flightTracker.js';
 import { handleDMSMessage } from './dms.js';
 import { runScan, setScanEnabled, isScanEnabled, setScanTime, getScanTime } from './scan.js';
 
@@ -138,6 +138,17 @@ export async function handleCommand(msg) {
       : `⚠️ *${untrackMatch[1].toUpperCase()}* wasn't being tracked.`;
   }
 
+  const rescheduleMatch = body.match(/^reschedule\s+([a-z0-9]+)\s+(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})$/i);
+  if (rescheduleMatch) {
+    const callsign = rescheduleMatch[1].toUpperCase();
+    const departureIso = `${rescheduleMatch[2]}T${rescheduleMatch[3]}:00`;
+    if (isNaN(new Date(departureIso).getTime())) return '❌ Invalid date. Use: reschedule <callsign> YYYY-MM-DD HH:MM';
+    const result = rescheduleFlight(callsign, departureIso);
+    return result
+      ? `✅ *${callsign}* rescheduled for departure ${rescheduleMatch[2]} at ${rescheduleMatch[3]}`
+      : `❌ Failed to reschedule *${callsign}*.`;
+  }
+
   const unscheduleMatch = lower.match(/^unschedule\s+([a-z0-9]+)$/i);
   if (unscheduleMatch) {
     const removed = unscheduleFlight(unscheduleMatch[1]);
@@ -235,6 +246,7 @@ export async function handleCommand(msg) {
 • \`track <callsign>\` — get automatic updates when status/delay/gate changes
 • \`untrack <callsign>\` — stop tracking a flight
 • \`unschedule <callsign>\` — remove a flight from the tracking schedule
+• \`reschedule <callsign> YYYY-MM-DD HH:MM\` — update a flight's scheduled departure
 • \`tracked\` — list all currently tracked flights
 • \`flight interval\` — show current poll interval
 • \`set flight interval 5m\` — set poll interval (e.g. 2m, 10m)`,

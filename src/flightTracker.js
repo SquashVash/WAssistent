@@ -241,6 +241,14 @@ export function unscheduleFlight(callsign) {
   return true;
 }
 
+export function rescheduleFlight(callsign, departureIso) {
+  const key = callsign.toUpperCase();
+  const scheduled = getScheduled();
+  delete scheduled[key];
+  saveScheduled(scheduled);
+  return scheduleFlightTracking(key, departureIso);
+}
+
 export function checkCalendarForFlights(events) {
   const CALLSIGN_RE = /\b([A-Z]{2,3})\s?(\d{1,4})\b/g;
   const scheduled = getScheduled();
