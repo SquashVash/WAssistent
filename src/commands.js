@@ -6,7 +6,7 @@ import { handleRemind } from './remind.js';
 import { fetchTicketEmails, setGmailPollInterval, getGmailPollMinutes, fetchMonthlyReceipts } from './gmail.js';
 import { sendMessage } from './messaging.js';
 import { lookupFlight } from './flights.js';
-import { trackFlight, untrackFlight, listTracked, getScheduled, setFlightPollInterval, getFlightPollMinutes } from './flightTracker.js';
+import { trackFlight, untrackFlight, listTracked, getScheduled, unscheduleFlight, setFlightPollInterval, getFlightPollMinutes } from './flightTracker.js';
 import { handleDMSMessage } from './dms.js';
 import { runScan, setScanEnabled, isScanEnabled, setScanTime, getScanTime } from './scan.js';
 
@@ -138,6 +138,14 @@ export async function handleCommand(msg) {
       : `⚠️ *${untrackMatch[1].toUpperCase()}* wasn't being tracked.`;
   }
 
+  const unscheduleMatch = lower.match(/^unschedule\s+([a-z0-9]+)$/i);
+  if (unscheduleMatch) {
+    const removed = unscheduleFlight(unscheduleMatch[1]);
+    return removed
+      ? `✅ Removed *${unscheduleMatch[1].toUpperCase()}* from schedule.`
+      : `⚠️ *${unscheduleMatch[1].toUpperCase()}* wasn't scheduled.`;
+  }
+
   if (/^tracked$/i.test(lower)) {
     const tz = getSetting('briefTimezone', 'DAILY_BRIEF_TIMEZONE', 'UTC');
     const active = listTracked();
@@ -226,6 +234,7 @@ export async function handleCommand(msg) {
 • \`flight <callsign>\` — look up live flight status (e.g. \`flight ELY006\`)
 • \`track <callsign>\` — get automatic updates when status/delay/gate changes
 • \`untrack <callsign>\` — stop tracking a flight
+• \`unschedule <callsign>\` — remove a flight from the tracking schedule
 • \`tracked\` — list all currently tracked flights
 • \`flight interval\` — show current poll interval
 • \`set flight interval 5m\` — set poll interval (e.g. 2m, 10m)`,
