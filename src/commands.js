@@ -223,6 +223,8 @@ export async function handleCommand(msg) {
     const minute = parseInt(getSetting('briefMinute', 'DAILY_BRIEF_MINUTE', '0'), 10);
     const emailInterval = getGmailPollMinutes();
     const flightInterval = getFlightPollMinutes();
+    const scanEnabled = isScanEnabled();
+    const scanTime = getScanTime();
     return `*⚙️ Current Settings*
 
 *Daily Brief*
@@ -232,7 +234,11 @@ export async function handleCommand(msg) {
 • Check interval: every ${emailInterval} min
 
 *Flights*
-• Poll interval: every ${flightInterval} min`;
+• Poll interval: every ${flightInterval} min
+
+*Auto Scan*
+• Status: ${scanEnabled ? 'Enabled' : 'Disabled'}
+• Time: ${scanTime} (${tz})`;
   }
 
   const HELP_CATEGORIES = {
