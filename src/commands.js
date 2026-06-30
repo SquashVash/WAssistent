@@ -112,5 +112,5 @@ export async function handleCommand(body) {
 Anything else is sent to the AI assistant.`;
   }
 
-  return null;
+  return false;
 }
