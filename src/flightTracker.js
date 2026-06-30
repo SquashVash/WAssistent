@@ -175,7 +175,7 @@ async function pollAll() {
   saveTracked(tracked);
 }
 
-function getScheduled() {
+export function getScheduled() {
   return getSetting('scheduledFlightTrackings', null, {});
 }
 

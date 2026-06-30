@@ -6,7 +6,7 @@ import { handleRemind } from './remind.js';
 import { fetchTicketEmails, setGmailPollInterval, getGmailPollMinutes, fetchMonthlyReceipts } from './gmail.js';
 import { sendMessage } from './messaging.js';
 import { lookupFlight } from './flights.js';
-import { trackFlight, untrackFlight, listTracked, setFlightPollInterval, getFlightPollMinutes } from './flightTracker.js';
+import { trackFlight, untrackFlight, listTracked, getScheduled, setFlightPollInterval, getFlightPollMinutes } from './flightTracker.js';
 import { handleDMSMessage } from './dms.js';
 import { runScan, setScanEnabled, isScanEnabled, setScanTime, getScanTime } from './scan.js';
 
@@ -139,10 +139,31 @@ export async function handleCommand(msg) {
   }
 
   if (/^tracked$/i.test(lower)) {
-    const flights = listTracked();
-    return flights.length
-      ? `✈️ Tracked flights:\n${flights.map(f => `• ${f}`).join('\n')}`
-      : `✈️ No flights currently being tracked.`;
+    const tz = getSetting('briefTimezone', 'DAILY_BRIEF_TIMEZONE', 'UTC');
+    const active = listTracked();
+    const scheduled = getScheduled();
+    const lines = [];
+
+    if (active.length) {
+      lines.push('*🟢 Actively tracking:*');
+      lines.push(...active.map(f => `• ${f}`));
+    }
+
+    const scheduledEntries = Object.entries(scheduled);
+    if (scheduledEntries.length) {
+      lines.push('');
+      lines.push('*⏳ Scheduled to track:*');
+      for (const [callsign, departureIso] of scheduledEntries) {
+        const dep = new Date(departureIso);
+        const trackingStart = new Date(dep.getTime() - 4 * 60 * 60 * 1000);
+        const fmt = d => d.toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: tz });
+        lines.push(`• *${callsign}* — tracking starts ${fmt(trackingStart)} (departure ${fmt(dep)})`);
+      }
+    }
+
+    return lines.length
+      ? lines.join('\n')
+      : '✈️ No flights tracked or scheduled.';
   }
 
   if (/^flight interval$/i.test(lower)) {
