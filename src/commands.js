@@ -138,7 +138,7 @@ export async function handleCommand(msg) {
       : `⚠️ *${untrackMatch[1].toUpperCase()}* wasn't being tracked.`;
   }
 
-  const rescheduleMatch = body.match(/^reschedule\s+([a-z0-9]+)(?:\s+(\d{2}-\d{2}-\d{2}))?\s+(\d{2}:\d{2})$/i);
+  const rescheduleMatch = body.match(/^(?:re)?schedule\s+([a-z0-9]+)(?:\s+(\d{2}-\d{2}-\d{2}))?\s+(\d{2}:\d{2})$/i);
   if (rescheduleMatch) {
     const callsign = rescheduleMatch[1].toUpperCase();
     const timeStr = rescheduleMatch[3];
