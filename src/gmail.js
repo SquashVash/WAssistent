@@ -8,7 +8,7 @@ import { scheduleFlightTracking } from './flightTracker.js';
 const TICKET_KEYWORDS = /ticket|booking|reservation|boarding|e-ticket|confirmation|voucher/i;
 
 // Keywords used to identify flight-related emails
-const FLIGHT_EMAIL_KEYWORDS = /flight|itinerary|boarding pass|e-ticket|airline/i;
+const FLIGHT_EMAIL_KEYWORDS = /flight|itinerary|boarding pass|e-ticket|airline|booking|bravofly|lastminute\.com|travel|fly|trip\.com/i;
 
 // Keywords used to identify receipt emails by subject
 const RECEIPT_KEYWORDS = /receipt|invoice|order|payment|purchase|charged|bill|transaction/i;
@@ -157,7 +157,7 @@ export async function scanForFlightEmails(notify = null) {
 
   const res = await gmail.users.messages.list({
     userId: 'me',
-    q: 'is:unread subject:(flight OR itinerary OR boarding OR e-ticket OR airline)',
+    q: 'is:unread subject:(flight OR itinerary OR boarding OR e-ticket OR airline OR booking OR Bravofly OR lastminute OR Travel OR fly OR Trip)',
     maxResults: 20,
   });
 
