@@ -339,6 +339,9 @@ export async function handleCommand(msg) {
       label: 'Other',
       text: `*⚙️ Other*
 • \`settings\` — show all current settings
+• \`cointoss\` — flip a coin (heads or tails)
+• \`random <max>\` — random number from 1 to max (e.g. \`random 6\`)
+• \`random <min> <max>\` — random number in range (e.g. \`random 10 100\`)
 • \`help <category>\` — show commands for a category`,
     },
   };
@@ -410,6 +413,20 @@ export async function handleCommand(msg) {
     } catch (err) {
       return `❌ QR generation failed: ${err.message}`;
     }
+  }
+
+  if (/^cointoss$/i.test(lower)) {
+    return Math.random() < 0.5 ? '🪙 Heads' : '🪙 Tails';
+  }
+
+  const randomMatch = lower.match(/^random\s+(-?\d+)(?:\s+(-?\d+))?$/i);
+  if (randomMatch) {
+    const a = parseInt(randomMatch[1], 10);
+    const b = randomMatch[2] !== undefined ? parseInt(randomMatch[2], 10) : null;
+    const min = b === null ? 1 : Math.min(a, b);
+    const max = b === null ? a : Math.max(a, b);
+    const result = Math.floor(Math.random() * (max - min + 1)) + min;
+    return `🎲 ${result}`;
   }
 
   // git <subcommand> [args...]
