@@ -367,12 +367,14 @@ export async function handleCommand(msg) {
   if (/^refresh$/i.test(lower)) {
     const appName = process.env.PM2_APP_NAME || 'bot';
     try {
-      const { stdout } = await execAsync('git pull');
-      const summary = stdout.trim().split('\n').pop();
+      const { stdout: pullOut } = await execAsync('git pull');
+      const summary = pullOut.trim().split('\n').pop();
+      // Install any new/updated packages before restarting
+      await execAsync('npm install --production');
       setTimeout(() => execAsync(`pm2 restart ${appName}`).catch(console.error), 500);
-      return `✅ ${summary}\n🔄 Restarting bot...`;
+      return `✅ ${summary}\n📦 Dependencies updated\n🔄 Restarting bot...`;
     } catch (err) {
-      return `❌ git pull failed: ${err.message}`;
+      return `❌ refresh failed: ${err.message}`;
     }
   }
 
