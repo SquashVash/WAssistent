@@ -107,23 +107,18 @@ function parseMaigretJson(raw) {
   let data;
   try { data = JSON.parse(raw); } catch { return []; }
 
-  const accounts = [];
-  // Maigret >= 0.4 wraps in { sites: { SiteName: { status: {message}, url_user, tags } } }
-  // Older versions: { SiteName: { status: "Claimed", url_user } }
+  // Simple format: { "SiteName": { "site": { tags, urlMain, ... }, "username": "...", "status": "Claimed"|"Available"|..., "url": "..." } }
   const sites = data.sites || data;
-  if (typeof sites !== 'object') return [];
+  if (typeof sites !== 'object' || Array.isArray(sites)) return [];
 
-  for (const [site, info] of Object.entries(sites)) {
+  const accounts = [];
+  for (const [siteName, info] of Object.entries(sites)) {
     if (!info || typeof info !== 'object') continue;
-    const statusMsg = typeof info.status === 'object'
-      ? (info.status.message || info.status.title || '')
-      : String(info.status || '');
-    const claimed = /claimed|found/i.test(statusMsg);
-    if (!claimed) continue;
-    const url = info.url_user || info.url_main || '';
-    const tags = Array.isArray(info.tags) ? info.tags : [];
+    if (!/claimed/i.test(String(info.status || ''))) continue;
+    const tags = Array.isArray(info.site?.tags) ? info.site.tags : [];
     const category = tags[0] || 'social';
-    accounts.push({ site, url, category });
+    const url = info.url || info.url_user || info.site?.urlMain || '';
+    accounts.push({ site: siteName, url, category });
   }
   return accounts.sort((a, b) => a.category.localeCompare(b.category) || a.site.localeCompare(b.site));
 }
