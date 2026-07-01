@@ -2,6 +2,7 @@ import { getSetting, setSetting } from './settings.js';
 import { getUpcomingEvents } from './calendar.js';
 import { checkCalendarForFlights } from './flightTracker.js';
 import { sendMessage } from './messaging.js';
+import { fetchTicketEmails } from './gmail.js';
 
 const DEFAULT_TIME = '00:00';
 
@@ -29,6 +30,14 @@ export async function runScan() {
   } catch (err) {
     console.error('❌ Scan: calendar flight check failed:', err.message);
     actions.push(`❌ Calendar check failed: ${err.message}`);
+  }
+
+  try {
+    const emailResults = await fetchTicketEmails(null, true);
+    actions.push(...emailResults);
+  } catch (err) {
+    console.error('❌ Scan: email scan failed:', err.message);
+    actions.push(`❌ Email scan failed: ${err.message}`);
   }
 
   const summary = actions.length

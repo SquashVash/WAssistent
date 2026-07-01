@@ -42,7 +42,7 @@ function getHeader(message, name) {
   )?.value || '';
 }
 
-async function processMessage(gmail, messageId, notify = null) {
+async function processMessage(gmail, messageId) {
   const msg = await gmail.users.messages.get({ userId: 'me', id: messageId, format: 'full' });
   const subject = getHeader(msg.data, 'Subject');
   const from = getHeader(msg.data, 'From');
@@ -51,11 +51,11 @@ async function processMessage(gmail, messageId, notify = null) {
 
   if (!TICKET_KEYWORDS.test(subject)) {
     console.log(`   ↳ skipped (no ticket keywords in subject)`);
-    return;
+    return [];
   }
 
   const parts = msg.data.payload?.parts || [];
-  let pdfCount = 0;
+  const results = [];
 
   for (const part of parts) {
     const isPdf = part.mimeType === 'application/pdf' || part.filename?.toLowerCase().endsWith('.pdf');
@@ -76,11 +76,10 @@ async function processMessage(gmail, messageId, notify = null) {
 
     await sendDocument(process.env.MY_CHAT_ID, base64, filename, caption);
     console.log(`   ↳ sent "${filename}" to WhatsApp ✅`);
-    await notify?.(`📎 Sent *${filename}*\n_${subject}_`);
-    pdfCount++;
+    results.push(`📎 Sent *${filename}* — _${subject}_`);
   }
 
-  if (pdfCount === 0) {
+  if (results.length === 0) {
     console.log(`   ↳ matched keywords but no PDF attachments found`);
   }
 
@@ -90,10 +89,22 @@ async function processMessage(gmail, messageId, notify = null) {
     id: messageId,
     requestBody: { removeLabelIds: ['UNREAD'] },
   });
+
+  return results;
 }
 
-async function poll(notify = null) {
-  await scanForFlightEmails(notify).catch(err => console.error('❌ Gmail: flight scan failed:', err.message));
+async function poll(notify = null, collectOnly = false) {
+  const results = [];
+
+  const flightResults = await scanForFlightEmails(notify).catch(err => {
+    console.error('❌ Gmail: flight scan failed:', err.message);
+    return [];
+  });
+  results.push(...flightResults);
+
+  if (!collectOnly) {
+    for (const r of flightResults) await sendMessage(process.env.MY_CHAT_ID, r);
+  }
 
   const auth = getAuthClient();
   const gmail = google.gmail({ version: 'v1', auth });
@@ -108,17 +119,22 @@ async function poll(notify = null) {
   const newMessages = messages.filter(({ id }) => !seenIds.has(id));
 
   console.log(`📬 Gmail: poll — ${newMessages.length} new email(s) with PDF attachments`);
-  await notify?.(`📬 Gmail: poll — ${newMessages.length} new email(s) with PDF attachments`);
 
   for (const { id } of newMessages) {
     seenIds.add(id);
     try {
-      await processMessage(gmail, id, notify);
+      const ticketResults = await processMessage(gmail, id);
+      results.push(...ticketResults);
+      if (!collectOnly) {
+        for (const r of ticketResults) await notify?.(r);
+      }
     } catch (err) {
       console.error(`❌ Gmail: failed to process message ${id}:`, err.message);
-      await notify?.(`❌ Failed to process email: ${err.message}`);
+      if (!collectOnly) await notify?.(`❌ Failed to process email: ${err.message}`);
     }
   }
+
+  return results;
 }
 
 function extractEmailBody(payload) {
@@ -167,6 +183,8 @@ export async function scanForFlightEmails(notify = null) {
   console.log(`✈️ Gmail: scanning ${newMessages.length} new flight email(s)`);
   await notify?.(`✈️ Gmail: scanning ${newMessages.length} new flight email(s)`);
 
+  const results = [];
+
   for (const { id } of newMessages) {
     scannedFlightIds.add(id);
     try {
@@ -203,19 +221,18 @@ export async function scanForFlightEmails(notify = null) {
         const fmtDate = (d) => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: tz });
         const fmtTime = (d) => d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: tz });
 
-        await sendMessage(
-          process.env.MY_CHAT_ID,
-          `✈️ Found flight *${flight.callsign}* in your email.\n📅 Departure: ${fmtDate(dep)} at ${fmtTime(dep)}\n⏰ Tracking will start at ${fmtTime(trackingStart)} on ${fmtDate(trackingStart)}`
-        );
+        results.push(`✈️ Found flight *${flight.callsign}* in email — departure ${fmtDate(dep)} at ${fmtTime(dep)}, tracking starts ${fmtTime(trackingStart)} on ${fmtDate(trackingStart)}`);
       }
     } catch (err) {
       console.error(`❌ Gmail: failed to process flight email ${id}:`, err.message);
     }
   }
+
+  return results;
 }
 
-export async function fetchTicketEmails(notify = null) {
-  await poll(notify);
+export async function fetchTicketEmails(notify = null, collectOnly = false) {
+  return poll(notify, collectOnly);
 }
 
 export async function fetchMonthlyReceipts() {
