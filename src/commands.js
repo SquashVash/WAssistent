@@ -4,7 +4,7 @@ import { getSetting, setSetting } from './settings.js';
 import { scheduleDailyBrief, sendDailyBrief } from './brief.js';
 import { handleRemind } from './remind.js';
 import { fetchTicketEmails, setGmailPollInterval, getGmailPollMinutes, fetchMonthlyReceipts } from './gmail.js';
-import { sendMessage, sendImage } from './messaging.js';
+import { sendMessage, sendFile } from './messaging.js';
 import QRCode from 'qrcode';
 import { lookupFlight } from './flights.js';
 import { trackFlight, untrackFlight, listTracked, getScheduled, unscheduleFlight, rescheduleFlight, clearAllTracked, clearAllScheduled, setFlightPollInterval, getFlightPollMinutes } from './flightTracker.js';
@@ -405,7 +405,7 @@ export async function handleCommand(msg) {
     const chatId = process.env.MY_CHAT_ID;
     try {
       const buf = await QRCode.toBuffer(qrText, { type: 'png', width: 512, margin: 2 });
-      await sendImage(chatId, buf.toString('base64'), qrText);
+      await sendFile(chatId, buf.toString('base64'), 'qr.png', 'image/png', qrText);
       return null;
     } catch (err) {
       return `❌ QR generation failed: ${err.message}`;
