@@ -9,6 +9,7 @@ import { lookupFlight } from './flights.js';
 import { trackFlight, untrackFlight, listTracked, getScheduled, unscheduleFlight, rescheduleFlight, clearAllTracked, clearAllScheduled, setFlightPollInterval, getFlightPollMinutes } from './flightTracker.js';
 import { handleDMSMessage } from './dms.js';
 import { runScan, setScanEnabled, isScanEnabled, setScanTime, getScanTime } from './scan.js';
+import { handleSpiderfootCommand, spiderfootHelp } from './spiderfoot.js';
 
 const execAsync = promisify(exec);
 
@@ -322,6 +323,11 @@ export async function handleCommand(msg) {
 • \`refresh\` — git pull and restart the bot
 • \`restart\` — restart the bot via pm2`,
     },
+    osint: {
+      emoji: '🕷️',
+      label: 'OSINT',
+      text: spiderfootHelp(),
+    },
     other: {
       emoji: '⚙️',
       label: 'Other',
@@ -379,6 +385,10 @@ export async function handleCommand(msg) {
       return `❌ Unknown category. Try: ${names}`;
     }
     return cat.text;
+  }
+
+  if (/^spiderfoot/i.test(lower)) {
+    return await handleSpiderfootCommand(text);
   }
 
   return false;
