@@ -56,8 +56,10 @@ export async function sfScanSummary(scanId) {
 }
 
 export async function sfScanResults(scanId) {
+  // Don't send filterfp — CherryPy converts any non-empty string to True,
+  // so passing filterfp='false' would silently drop all results.
   const { data } = await axios.get(`${SF_BASE}/scaneventresults`, {
-    params: { id: scanId, filterfp: 'false' },
+    params: { id: scanId },
   });
   return Array.isArray(data) ? data : [];
 }
