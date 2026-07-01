@@ -5,7 +5,7 @@ import { startGmailWatcher } from './src/gmail.js';
 import { startFlightTracker, restoreScheduledTrackings } from './src/flightTracker.js';
 import { initDMS } from './src/dms.js';
 import { scheduleAutoScan } from './src/scan.js';
-import { initSpiderfootPollers } from './src/spiderfoot.js';
+import { initOsintPollers } from './src/osint.js';
 
 const PORT = process.env.WEBHOOK_PORT || process.env.PORT || 3000;
 
@@ -16,4 +16,4 @@ startFlightTracker();
 restoreScheduledTrackings();
 initDMS();
 scheduleAutoScan();
-initSpiderfootPollers();
+initOsintPollers();

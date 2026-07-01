@@ -9,7 +9,7 @@ import { lookupFlight } from './flights.js';
 import { trackFlight, untrackFlight, listTracked, getScheduled, unscheduleFlight, rescheduleFlight, clearAllTracked, clearAllScheduled, setFlightPollInterval, getFlightPollMinutes } from './flightTracker.js';
 import { handleDMSMessage } from './dms.js';
 import { runScan, setScanEnabled, isScanEnabled, setScanTime, getScanTime } from './scan.js';
-import { handleSpiderfootCommand, spiderfootHelp, getSpiderfootPollMinutes } from './spiderfoot.js';
+import { handleOsintCommand, osintHelp, getOsintPollMinutes } from './osint.js';
 
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
@@ -256,8 +256,8 @@ export async function handleCommand(msg) {
 • Status: ${scanEnabled ? 'Enabled' : 'Disabled'}
 • Time: ${scanTime} (${tz})
 
-*SpiderFoot*
-• Poll interval: every ${getSpiderfootPollMinutes()} min`;
+*OSINT*
+• Poll interval: every ${getOsintPollMinutes()} min`;
   }
 
   const HELP_CATEGORIES = {
@@ -329,9 +329,9 @@ export async function handleCommand(msg) {
 • \`git <subcommand> [args]\` — run any git command and get the output`,
     },
     osint: {
-      emoji: '🕷️',
+      emoji: '🔍',
       label: 'OSINT',
-      text: spiderfootHelp(),
+      text: osintHelp(),
     },
     other: {
       emoji: '⚙️',
@@ -394,8 +394,8 @@ export async function handleCommand(msg) {
     return cat.text;
   }
 
-  if (/^spiderfoot/i.test(lower)) {
-    return await handleSpiderfootCommand(text);
+  if (/^osint/i.test(lower)) {
+    return await handleOsintCommand(text);
   }
 
   // git <subcommand> [args...]
