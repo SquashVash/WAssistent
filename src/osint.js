@@ -665,19 +665,34 @@ export async function handleOsintCommand(text) {
     return `✅ OSINT poll interval set to every ${minutes} min.`;
   }
 
-  // osint stop <id>
+  // osint stop * | osint stop <id>
   const stopMatch = t.match(/^osint stop\s+(\S+)$/i);
   if (stopMatch) {
     const id = stopMatch[1];
+    if (id === '*' || id.toLowerCase() === 'all') {
+      const scans = await sfListScans(50);
+      const running = scans.filter(s => !TERMINAL_SF.has(s[6]?.toUpperCase()));
+      if (!running.length) return '⚠️ No running scans to stop.';
+      const results = await Promise.allSettled(running.map(s => sfStopScan(s[0])));
+      const stopped = results.filter(r => r.status === 'fulfilled').length;
+      return `⛔ Stop requested for ${stopped}/${running.length} running scan(s).`;
+    }
     if (!SCAN_ID_RE.test(id)) return '❌ Invalid scan ID format.';
     try { await sfStopScan(id); return `⛔ Scan \`${id}\` stop requested.`; }
     catch (err) { return `❌ OSINT error: ${err.message}`; }
   }
 
-  // osint delete <id>
+  // osint delete * | osint delete <id>
   const deleteMatch = t.match(/^osint delete\s+(\S+)$/i);
   if (deleteMatch) {
     const id = deleteMatch[1];
+    if (id === '*' || id.toLowerCase() === 'all') {
+      const scans = await sfListScans(50);
+      if (!scans.length) return '⚠️ No scans to delete.';
+      const results = await Promise.allSettled(scans.map(s => sfDeleteScan(s[0]).then(() => removePending(s[0]))));
+      const deleted = results.filter(r => r.status === 'fulfilled').length;
+      return `🗑️ Deleted ${deleted}/${scans.length} scan(s).`;
+    }
     if (!SCAN_ID_RE.test(id)) return '❌ Invalid scan ID format.';
     try {
       await sfDeleteScan(id);
@@ -716,7 +731,9 @@ export function osintHelp() {
 • \`osint results <id>\` — event type summary
 • \`osint dossier <id>\` — generate & send full PDF report
 • \`osint stop <id>\` — abort a running scan
+• \`osint stop *\` — abort all running scans
 • \`osint delete <id>\` — delete a scan
+• \`osint delete *\` — delete all scans
 • \`osint poll <minutes>\` — set completion check interval (default 2 min)
 
 _Username/person targets also run Maigret for social account discovery._`;
