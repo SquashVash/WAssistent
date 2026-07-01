@@ -1,6 +1,7 @@
 import axios from 'axios';
 import PDFDocument from 'pdfkit';
-import { sendDocument } from './messaging.js';
+import { sendDocument, sendMessage } from './messaging.js';
+import { getSetting, setSetting } from './settings.js';
 
 const SF_BASE = process.env.SPIDERFOOT_URL || 'http://127.0.0.1:5001';
 const SCAN_ID_RE = /^[a-z0-9]{8,36}$/i;
@@ -276,6 +277,121 @@ async function buildDossierPDF(target, statusArr, summaryRows, dataGroups) {
   });
 }
 
+// ─── Scan poller ──────────────────────────────────────────────────
+
+const POLL_INTERVAL_MS = 2 * 60 * 1000; // 2 minutes
+const TERMINAL = new Set(['FINISHED', 'ABORTED', 'FAILED', 'ERROR']);
+
+// In-memory map of active timers: scanId → timeoutHandle
+const activePollers = new Map();
+
+function getPending() {
+  return getSetting('spiderfootPendingScans', null, {});
+}
+
+function addPending(scanId, target) {
+  const p = getPending();
+  p[scanId] = { target, startedAt: Date.now() };
+  setSetting('spiderfootPendingScans', p);
+}
+
+function removePending(scanId) {
+  const p = getPending();
+  delete p[scanId];
+  setSetting('spiderfootPendingScans', p);
+  if (activePollers.has(scanId)) {
+    clearTimeout(activePollers.get(scanId));
+    activePollers.delete(scanId);
+  }
+}
+
+async function pollOnce(scanId, target) {
+  let statusData;
+  try {
+    statusData = await sfScanStatus(scanId);
+  } catch (err) {
+    console.error(`🕷️ Poll ${scanId}: status check failed — ${err.message}`);
+    schedulePoll(scanId, target); // retry next interval
+    return;
+  }
+
+  const status = statusData[5]; // scanstatus: [name, target, created, started, ended, status, ...]
+  console.log(`🕷️ Poll scan ${scanId} (${target}): ${status}`);
+
+  if (!TERMINAL.has(status?.toUpperCase())) {
+    schedulePoll(scanId, target);
+    return;
+  }
+
+  // Scan ended — remove from pending regardless of what happens next
+  removePending(scanId);
+  const chatId = process.env.MY_CHAT_ID;
+
+  if (status?.toUpperCase() !== 'FINISHED') {
+    await sendMessage(chatId, `🕷️ Scan on *${target}* ended with status: ${status}`);
+    return;
+  }
+
+  // FINISHED — generate and send the dossier
+  try {
+    const [summary, rows] = await Promise.all([sfScanSummary(scanId), sfScanResults(scanId)]);
+    const total      = summary.reduce((a, r) => a + (r[3] || 0), 0);
+    const typeLabels = Object.fromEntries(summary.map(r => [r[0], r[1]]));
+    const dataGroups = buildDataGroups(rows, typeLabels);
+
+    if (!rows.length) {
+      await sendMessage(chatId, `🕷️ Scan on *${target}* finished — no events found.`);
+      return;
+    }
+
+    const pdfBuf    = await buildDossierPDF(target, statusData, summary, dataGroups);
+    const safeTarget = target.replace(/[^a-z0-9._-]/gi, '_');
+    await sendDocument(
+      chatId,
+      pdfBuf.toString('base64'),
+      `OSINT_${safeTarget}_${scanId}.pdf`,
+      `🕷️ Scan complete! OSINT Dossier — ${target} (${total} events)`
+    );
+  } catch (err) {
+    await sendMessage(chatId, `🕷️ Scan on *${target}* finished but dossier failed: ${err.message}`);
+  }
+}
+
+function schedulePoll(scanId, target) {
+  if (activePollers.has(scanId)) clearTimeout(activePollers.get(scanId));
+  const handle = setTimeout(() => pollOnce(scanId, target), POLL_INTERVAL_MS);
+  activePollers.set(scanId, handle);
+}
+
+export function startScanPoller(scanId, target) {
+  addPending(scanId, target);
+  schedulePoll(scanId, target);
+  console.log(`🕷️ Polling started for scan ${scanId} (${target}) every ${POLL_INTERVAL_MS / 60000} min`);
+}
+
+// Called on bot startup — resume polling for any scans that were in-flight before a restart
+export async function initSpiderfootPollers() {
+  const pending = getPending();
+  const entries = Object.entries(pending);
+  if (!entries.length) return;
+  console.log(`🕷️ Resuming ${entries.length} pending scan poller(s)…`);
+  for (const [scanId, { target }] of entries) {
+    // Check status immediately — the scan may have finished while the bot was down
+    try {
+      const statusData = await sfScanStatus(scanId);
+      const status = statusData[5];
+      if (TERMINAL.has(status?.toUpperCase())) {
+        // Already done — trigger completion flow immediately
+        await pollOnce(scanId, target);
+      } else {
+        schedulePoll(scanId, target);
+      }
+    } catch {
+      schedulePoll(scanId, target); // unreachable now, retry later
+    }
+  }
+}
+
 // ─── Text helpers (for non-dossier commands) ──────────────────────
 
 // scanlist: [id, name, target, created, started, finished, status, result_count, riskmatrix]
@@ -386,7 +502,8 @@ export async function handleSpiderfootCommand(text) {
     const target = scanMatch[1].trim();
     try {
       const scanId = await sfStartScan(target);
-      return `🕷️ Scan started!\n• Target: *${target}*\n• ID: \`${scanId}\`\n\nCheck progress: \`spiderfoot status ${scanId}\`\nView summary: \`spiderfoot results ${scanId}\`\nGet PDF report: \`spiderfoot dossier ${scanId}\``;
+      startScanPoller(scanId, target);
+      return `🕷️ Scan started!\n• Target: *${target}*\n• ID: \`${scanId}\`\n\nI'll notify you automatically when the scan finishes and send the full dossier.\nCheck progress: \`spiderfoot status ${scanId}\``;
     } catch (err) { return `❌ SpiderFoot error: ${err.message}`; }
   }
 
