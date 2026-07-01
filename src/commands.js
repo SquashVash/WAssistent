@@ -1,4 +1,4 @@
-import { exec } from 'child_process';
+import { exec, execFile } from 'child_process';
 import { promisify } from 'util';
 import { getSetting, setSetting } from './settings.js';
 import { scheduleDailyBrief, sendDailyBrief } from './brief.js';
@@ -12,6 +12,7 @@ import { runScan, setScanEnabled, isScanEnabled, setScanTime, getScanTime } from
 import { handleSpiderfootCommand, spiderfootHelp, getSpiderfootPollMinutes } from './spiderfoot.js';
 
 const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 export async function handleCommand(msg) {
   const body = typeof msg === 'string' ? msg : (msg?.body ?? '');
@@ -324,7 +325,8 @@ export async function handleCommand(msg) {
 • \`logs\` — fetch last 50 log lines
 • \`logs 100\` — fetch last N log lines
 • \`refresh\` — git pull and restart the bot
-• \`restart\` — restart the bot via pm2`,
+• \`restart\` — restart the bot via pm2
+• \`git <subcommand> [args]\` — run any git command and get the output`,
     },
     osint: {
       emoji: '🕷️',
@@ -394,6 +396,27 @@ export async function handleCommand(msg) {
 
   if (/^spiderfoot/i.test(lower)) {
     return await handleSpiderfootCommand(text);
+  }
+
+  // git <subcommand> [args...]
+  if (/^git\s+\S/i.test(lower)) {
+    const raw = text.trim().slice(4).trim();
+    // Shell-word split (handles quoted strings)
+    const args = raw.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || [];
+    // Strip surrounding quotes from each arg
+    const cleanArgs = args.map(a => a.replace(/^(["'])(.*)\1$/, '$2'));
+    try {
+      const { stdout, stderr } = await execFileAsync('git', cleanArgs, {
+        cwd: process.cwd(),
+        timeout: 20000,
+      });
+      const out = (stdout + stderr).trim();
+      const display = out.length > 3800 ? out.slice(0, 3800) + '\n…(truncated)' : out;
+      return display ? `\`\`\`\n${display}\n\`\`\`` : '✅ (no output)';
+    } catch (err) {
+      const out = ((err.stdout || '') + (err.stderr || '')).trim();
+      return `❌ git error:\n\`\`\`\n${out || err.message}\n\`\`\``;
+    }
   }
 
   return false;
