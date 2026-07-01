@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { spawn } from 'child_process';
-import { existsSync, readFileSync, unlinkSync } from 'fs';
+import { existsSync, readFileSync, mkdirSync, readdirSync, rmSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import PDFDocument from 'pdfkit';
@@ -97,8 +97,10 @@ async function sfDeleteScan(scanId) { await axios.get(`${SF_BASE}/scandelete`, {
 // In-memory state: sfScanId → { done, results: [{site, url, category}] }
 const maigretState = new Map();
 
-function maigretOutputFile(sfScanId) {
-  return join(tmpdir(), `maigret_${sfScanId}.json`);
+function maigretOutputDir(sfScanId) {
+  const dir = join(tmpdir(), `maigret_${sfScanId}`);
+  mkdirSync(dir, { recursive: true });
+  return dir;
 }
 
 function parseMaigretJson(raw) {
@@ -127,42 +129,60 @@ function parseMaigretJson(raw) {
 }
 
 function startMaigret(sfScanId, username) {
-  const file = maigretOutputFile(sfScanId);
+  const dir = maigretOutputDir(sfScanId);
   maigretState.set(sfScanId, { done: false, results: null });
 
-  const MAIGRET_ARGS = [username, '--json', file];
+  // -J simple: write a simple JSON report; --folderoutput: where to put it
+  const MAIGRET_ARGS = [username, '-J', 'simple', '--folderoutput', dir];
 
-  // Try `maigret` binary; it may also be invocable as `python3 -m maigret`
-  const proc = spawn('maigret', MAIGRET_ARGS, {
-    stdio: ['ignore', 'ignore', 'pipe'],
-  });
+  function spawnMaigret(bin, args) {
+    const proc = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    let output = '';
+    proc.stdout.on('data', d => { output += d.toString(); });
+    proc.stderr.on('data', d => { output += d.toString(); });
+    proc.on('close', (code) => {
+      console.log(`🔍 Maigret exit ${code} | dir: ${dir}`);
+      finalizeMaigret(sfScanId, dir, output);
+    });
+    return proc;
+  }
+
+  // Try `maigret` binary; fallback to `python3 -m maigret`
+  const proc = spawnMaigret('maigret', MAIGRET_ARGS);
 
   proc.on('error', (err) => {
     if (err.code === 'ENOENT') {
-      // Maigret not found as binary — try python3 -m maigret
-      const proc2 = spawn('python3', ['-m', 'maigret', ...MAIGRET_ARGS], {
-        stdio: ['ignore', 'ignore', 'ignore'],
-      });
-      proc2.on('error', () => finalizeMaigret(sfScanId, file));
-      proc2.on('close', () => finalizeMaigret(sfScanId, file));
+      const proc2 = spawnMaigret('python3', ['-m', 'maigret', ...MAIGRET_ARGS]);
+      proc2.on('error', () => finalizeMaigret(sfScanId, dir, 'python3 not found'));
     } else {
-      finalizeMaigret(sfScanId, file);
+      finalizeMaigret(sfScanId, dir, err.message);
     }
   });
-
-  proc.on('close', () => finalizeMaigret(sfScanId, file));
 }
 
-function finalizeMaigret(sfScanId, file) {
+function finalizeMaigret(sfScanId, dir, debugOutput = '') {
   const state = maigretState.get(sfScanId);
   if (!state || state.done) return;
   state.done = true;
-  if (existsSync(file)) {
+
+  // Maigret writes report_<username>_<timestamp>.json into the folder
+  let jsonFile = null;
+  try {
+    const files = readdirSync(dir);
+    jsonFile = files.find(f => f.endsWith('.json'));
+  } catch {}
+
+  if (jsonFile) {
     try {
-      state.results = parseMaigretJson(readFileSync(file, 'utf-8'));
-      unlinkSync(file);
-    } catch { state.results = []; }
+      const raw = readFileSync(join(dir, jsonFile), 'utf-8');
+      state.results = parseMaigretJson(raw);
+    } catch (e) {
+      console.error(`🔍 Maigret parse error: ${e.message}`);
+      state.results = [];
+    }
+    try { rmSync(dir, { recursive: true, force: true }); } catch {}
   } else {
+    console.log(`🔍 Maigret: no JSON file in ${dir}. Output:\n${debugOutput.slice(-800)}`);
     state.results = [];
   }
   console.log(`🔍 Maigret done for ${sfScanId}: ${state.results.length} accounts found`);
@@ -286,10 +306,10 @@ export async function initOsintPollers() {
     const { target, targetType, maigret: usesMaigret } = record;
     // Re-start Maigret if it was running (process was lost on restart)
     if (usesMaigret) {
-      const file = maigretOutputFile(sfScanId);
-      if (existsSync(file)) {
-        // File already exists — Maigret completed before restart
-        finalizeMaigret(sfScanId, file);
+      const dir = maigretOutputDir(sfScanId);
+      const hasOutput = readdirSync(dir).some(f => f.endsWith('.json'));
+      if (hasOutput) {
+        finalizeMaigret(sfScanId, dir);
       } else {
         startMaigret(sfScanId, target);
       }
