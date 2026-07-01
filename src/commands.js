@@ -9,7 +9,7 @@ import { lookupFlight } from './flights.js';
 import { trackFlight, untrackFlight, listTracked, getScheduled, unscheduleFlight, rescheduleFlight, clearAllTracked, clearAllScheduled, setFlightPollInterval, getFlightPollMinutes } from './flightTracker.js';
 import { handleDMSMessage } from './dms.js';
 import { runScan, setScanEnabled, isScanEnabled, setScanTime, getScanTime } from './scan.js';
-import { handleSpiderfootCommand, spiderfootHelp } from './spiderfoot.js';
+import { handleSpiderfootCommand, spiderfootHelp, getSpiderfootPollMinutes } from './spiderfoot.js';
 
 const execAsync = promisify(exec);
 
@@ -253,7 +253,10 @@ export async function handleCommand(msg) {
 
 *Auto Scan*
 • Status: ${scanEnabled ? 'Enabled' : 'Disabled'}
-• Time: ${scanTime} (${tz})`;
+• Time: ${scanTime} (${tz})
+
+*SpiderFoot*
+• Poll interval: every ${getSpiderfootPollMinutes()} min`;
   }
 
   const HELP_CATEGORIES = {

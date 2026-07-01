@@ -279,8 +279,15 @@ async function buildDossierPDF(target, statusArr, summaryRows, dataGroups) {
 
 // ─── Scan poller ──────────────────────────────────────────────────
 
-const POLL_INTERVAL_MS = 2 * 60 * 1000; // 2 minutes
 const TERMINAL = new Set(['FINISHED', 'ABORTED', 'FAILED', 'ERROR']);
+
+export function getSpiderfootPollMinutes() {
+  return parseInt(getSetting('spiderfootPollMinutes', 'SPIDERFOOT_POLL_MINUTES', '2'), 10) || 2;
+}
+
+export function setSpiderfootPollMinutes(minutes) {
+  setSetting('spiderfootPollMinutes', minutes);
+}
 
 // In-memory map of active timers: scanId → timeoutHandle
 const activePollers = new Map();
@@ -359,14 +366,15 @@ async function pollOnce(scanId, target) {
 
 function schedulePoll(scanId, target) {
   if (activePollers.has(scanId)) clearTimeout(activePollers.get(scanId));
-  const handle = setTimeout(() => pollOnce(scanId, target), POLL_INTERVAL_MS);
+  const ms = getSpiderfootPollMinutes() * 60 * 1000;
+  const handle = setTimeout(() => pollOnce(scanId, target), ms);
   activePollers.set(scanId, handle);
 }
 
 export function startScanPoller(scanId, target) {
   addPending(scanId, target);
   schedulePoll(scanId, target);
-  console.log(`🕷️ Polling started for scan ${scanId} (${target}) every ${POLL_INTERVAL_MS / 60000} min`);
+  console.log(`🕷️ Polling started for scan ${scanId} (${target}) every ${getSpiderfootPollMinutes()} min`);
 }
 
 // Called on bot startup — resume polling for any scans that were in-flight before a restart
@@ -478,6 +486,15 @@ export async function handleSpiderfootCommand(text) {
     } catch (err) { return `❌ SpiderFoot error: ${err.message}`; }
   }
 
+  // spiderfoot poll <minutes>
+  const pollMatch = text.trim().match(/^spiderfoot poll\s+(\d+)$/i);
+  if (pollMatch) {
+    const minutes = parseInt(pollMatch[1], 10);
+    if (minutes < 1 || minutes > 60) return '❌ Poll interval must be between 1 and 60 minutes.';
+    setSpiderfootPollMinutes(minutes);
+    return `✅ SpiderFoot poll interval set to every ${minutes} min.`;
+  }
+
   // spiderfoot stop <id>
   const stopMatch = text.trim().match(/^spiderfoot stop\s+(\S+)$/i);
   if (stopMatch) {
@@ -518,5 +535,6 @@ export function spiderfootHelp() {
 • \`spiderfoot results <id>\` — event type summary
 • \`spiderfoot dossier <id>\` — generate & send full PDF report
 • \`spiderfoot stop <id>\` — abort a running scan
-• \`spiderfoot delete <id>\` — delete a scan`;
+• \`spiderfoot delete <id>\` — delete a scan
+• \`spiderfoot poll <minutes>\` — set completion check interval (default 2 min)`;
 }
