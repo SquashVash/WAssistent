@@ -172,6 +172,13 @@ function finalizeMaigret(sfScanId, dir, debugOutput = '') {
     jsonFile = files.find(f => f.endsWith('.json'));
   } catch {}
 
+  // Log what's actually in our temp dir and the default reports/ dir
+  try { console.log(`🔍 Maigret temp dir contents: [${readdirSync(dir).join(', ')}]`); } catch {}
+  try {
+    const def = join(process.cwd(), 'reports');
+    if (existsSync(def)) console.log(`🔍 Maigret ./reports/ contents: [${readdirSync(def).join(', ')}]`);
+  } catch {}
+
   if (jsonFile) {
     try {
       const raw = readFileSync(join(dir, jsonFile), 'utf-8');
@@ -182,7 +189,7 @@ function finalizeMaigret(sfScanId, dir, debugOutput = '') {
     }
     try { rmSync(dir, { recursive: true, force: true }); } catch {}
   } else {
-    console.log(`🔍 Maigret: no JSON file in ${dir}. Output:\n${debugOutput.slice(-800)}`);
+    console.log(`🔍 Maigret: no JSON in temp dir. Output:\n${debugOutput.slice(-800)}`);
     state.results = [];
   }
   console.log(`🔍 Maigret done for ${sfScanId}: ${state.results.length} accounts found`);
