@@ -39,3 +39,11 @@ export async function sendFile(chatId, base64Data, filename, mimetype, caption =
     { headers }
   );
 }
+
+export async function sendImage(chatId, base64Data, caption = '') {
+  await axios.post(
+    `${OPENWA_URL}/sessions/${SESSION_ID}/messages/send-image`,
+    { chatId, base64: `data:image/png;base64,${base64Data}`, caption },
+    { headers }
+  );
+}
