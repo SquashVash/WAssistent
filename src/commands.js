@@ -267,7 +267,7 @@ export async function handleCommand(msg) {
 • \`brief status\` — show current brief time & timezone
 • \`set brief time HH:MM\` — set daily brief time (24h)
 • \`set brief timezone <tz>\` — set timezone (e.g. Europe/London)
-• \`send brief\` — send the daily brief right now`,
+• \`send briefing\` — send the daily brief right now`,
     },
     reminders: {
       emoji: '⏰',
