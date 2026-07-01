@@ -119,7 +119,7 @@ function parseMaigretJson(raw) {
     if (!/claimed/i.test(String(s.status || ''))) continue;
     const tags = Array.isArray(s.tags) ? s.tags : [];
     const category = tags[0] || 'social';
-    accounts.push({ site: siteName, url: s.url || '', category });
+    accounts.push({ site: siteName, url: s.url || '', category, ids: s.ids || {} });
   }
   return accounts.sort((a, b) => a.category.localeCompare(b.category) || a.site.localeCompare(b.site));
 }
@@ -359,9 +359,68 @@ function buildDataGroups(rows, typeLabels) {
   return new Map([...groups].map(([lbl, m]) => [lbl, [...m.values()]]));
 }
 
+// ─── Profile compilation ───────────────────────────────────────────
+
+const PROFILE_PRIORITY = ['LinkedIn', 'GitHub', 'Twitter', 'Instagram', 'Bluesky', 'Facebook', 'Reddit'];
+
+function compileProfile(accounts) {
+  const sorted = [...accounts].sort((a, b) => {
+    const ai = PROFILE_PRIORITY.indexOf(a.site), bi = PROFILE_PRIORITY.indexOf(b.site);
+    return (ai < 0 ? 999 : ai) - (bi < 0 ? 999 : bi);
+  });
+
+  let bestName = null, bestBio = null, bestImage = null;
+  const names = new Set(), bios = new Set(), usernames = new Set(), emails = new Set();
+  const timeline = [], socialStats = [];
+
+  for (const acc of sorted) {
+    const ids = acc.ids || {};
+
+    const name = ids.fullname || ids.full_name || ids.name || ids.display_name || ids.realname;
+    if (name && name.trim().length > 1) { names.add(name.trim()); if (!bestName) bestName = name.trim(); }
+
+    const bio = ids.bio || ids.description || ids.about || ids.summary;
+    if (bio && bio.trim().length > 3) { bios.add(bio.trim()); if (!bestBio) bestBio = bio.trim(); }
+
+    const img = ids.image || ids.avatar || ids.profile_image || ids.profile_picture;
+    if (img && !bestImage) bestImage = img;
+
+    for (const [k, v] of Object.entries(ids)) {
+      if (k.toLowerCase().includes('username') && typeof v === 'string' && v) usernames.add(v);
+    }
+    if (ids.email) emails.add(ids.email);
+
+    if (ids.created_at) {
+      const d = new Date(ids.created_at);
+      if (!isNaN(d)) timeline.push({ site: acc.site, date: d });
+    }
+
+    const followers = parseInt(ids.follower_count || ids.followers_count || ids.followers || 0) || 0;
+    const following = parseInt(ids.following_count || ids.following || 0) || 0;
+    const posts     = parseInt(ids.posts_count || ids.video_count || ids.public_repos_count || ids.tweet_count || 0) || 0;
+    if (followers || following || posts) socialStats.push({ site: acc.site, followers, following, posts });
+  }
+
+  timeline.sort((a, b) => a.date - b.date);
+  socialStats.sort((a, b) => b.followers - a.followers);
+
+  return { bestName, bestBio, bestImage, names: [...names], bios: [...bios], usernames: [...usernames], emails: [...emails], timeline, socialStats };
+}
+
+async function fetchProfileImage(url) {
+  if (!url) return null;
+  try {
+    const { data } = await axios.get(url, { responseType: 'arraybuffer', timeout: 6000, headers: { 'User-Agent': 'Mozilla/5.0' } });
+    return Buffer.from(data);
+  } catch { return null; }
+}
+
 // ─── PDF generation ────────────────────────────────────────────────
 
 async function buildDossierPDF(target, targetType, statusArr, summaryRows, dataGroups, maigretAccounts) {
+  const profile        = compileProfile(maigretAccounts);
+  const profileImgBuf  = await fetchProfileImage(profile.bestImage);
+
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ margin: 50, size: 'A4', bufferPages: true });
     const chunks = [];
@@ -397,35 +456,163 @@ async function buildDossierPDF(target, targetType, statusArr, summaryRows, dataG
       doc.y += 4;
     }
 
-    // ── Cover page ──────────────────────────────────────────────────
-    doc.save().rect(0, 0, PW, 90).fill(C.navy).restore();
-    doc.fillColor(C.white).font('Helvetica-Bold').fontSize(24)
-       .text('OSINT Intelligence Dossier', M, 20, { width: W });
-    doc.fillColor(C.accent).font('Helvetica-Bold').fontSize(11)
-       .text('Confidential — WAssistent Automated Report', M, 54);
-    doc.fillColor(C.silver).font('Helvetica').fontSize(9)
-       .text(new Date().toLocaleString('en-GB'), M, 68);
-    doc.y = 106;
+    // ── Cover — profile if Maigret data available, plain otherwise ──
+    const hasProfile = maigretAccounts.length && (profile.bestName || profile.bestBio || profile.timeline.length || profile.socialStats.length);
 
-    // Metadata block
-    doc.save().rect(M, doc.y, W, 100).fill(C.ltblue).restore();
-    const metaY = doc.y + 8;
-    const pairs = [
-      ['Target',       target],
-      ['Target Type',  targetType],
-      ['Tools Used',   toolsUsed],
-      ['Status',       status || '—'],
-      ['Scan Started', started || '—'],
-      ['Scan Ended',   ended   || '—'],
-      ['SF Events',    `${sfTotal} across ${sorted.length} categories`],
-      ...(maigretAccounts.length ? [['Accounts Found', `${maigretAccounts.length} via Maigret`]] : []),
-    ];
-    pairs.forEach(([k, v], i) => {
-      const ly = metaY + i * 13;
-      doc.fillColor(C.muted).font('Helvetica-Bold').fontSize(8.5).text(k + ':', M + 8, ly, { width: 100 });
-      doc.fillColor(C.text).font('Helvetica').fontSize(8.5).text(v, M + 112, ly, { width: W - 120 });
-    });
-    doc.y = metaY + pairs.length * 13 + 10;
+    if (hasProfile) {
+      // ── Profile cover ────────────────────────────────────────────
+      // Full-width navy header
+      doc.save().rect(0, 0, PW, 70).fill(C.navy).restore();
+      doc.fillColor(C.white).font('Helvetica-Bold').fontSize(20)
+         .text('OSINT Intelligence Dossier', M, 14, { width: W });
+      doc.fillColor(C.accent).font('Helvetica-Bold').fontSize(9)
+         .text('CONFIDENTIAL — WAssistent Automated Report', M, 40);
+      doc.fillColor(C.silver).font('Helvetica').fontSize(8)
+         .text(`${new Date().toLocaleString('en-GB')}  ·  Tools: ${toolsUsed}`, M, 54);
+
+      // Photo + name block
+      const photoSize = 100;
+      const photoX    = M;
+      const textX     = M + photoSize + 18;
+      const textW     = W - photoSize - 18;
+      const photoY    = 86;
+
+      if (profileImgBuf) {
+        try {
+          doc.save()
+             .circle(photoX + photoSize / 2, photoY + photoSize / 2, photoSize / 2)
+             .clip()
+             .image(profileImgBuf, photoX, photoY, { width: photoSize, height: photoSize })
+             .restore();
+          doc.save().circle(photoX + photoSize / 2, photoY + photoSize / 2, photoSize / 2)
+             .lineWidth(2.5).strokeColor(C.accent).stroke().restore();
+        } catch { /* unsupported image format */ }
+      } else {
+        doc.save().circle(photoX + photoSize / 2, photoY + photoSize / 2, photoSize / 2)
+           .fill(C.ltblue).restore();
+        doc.fillColor(C.silver).font('Helvetica').fontSize(8)
+           .text('No photo', photoX, photoY + photoSize / 2 - 5, { width: photoSize, align: 'center' });
+      }
+
+      const displayName = profile.bestName || target;
+      doc.fillColor(C.navy).font('Helvetica-Bold').fontSize(22)
+         .text(displayName, textX, photoY + 4, { width: textW });
+
+      const altNames = profile.names.filter(n => n !== displayName);
+      if (altNames.length) {
+        doc.fillColor(C.muted).font('Helvetica').fontSize(8.5)
+           .text('a.k.a. ' + altNames.join(' · '), textX, doc.y + 3, { width: textW });
+      }
+
+      const unames = [...new Set(profile.usernames)].slice(0, 8);
+      if (unames.length) {
+        doc.fillColor(C.accent).font('Helvetica').fontSize(9)
+           .text(unames.map(u => '@' + u).join('  ·  '), textX, doc.y + 4, { width: textW });
+      }
+
+      if (profile.bestBio) {
+        doc.fillColor(C.text).font('Helvetica-Oblique').fontSize(9)
+           .text(`"${profile.bestBio}"`, textX, doc.y + 6, { width: textW });
+      }
+
+      doc.y = Math.max(doc.y + 6, photoY + photoSize + 10);
+
+      // Scan metadata bar
+      doc.save().rect(M, doc.y, W, 1).fill(C.rule).restore();
+      doc.y += 6;
+      const metaPairs = [
+        ['Target', target], ['Type', targetType],
+        ['Status', status || '—'], ['Started', started || '—'], ['Ended', ended || '—'],
+        ['SF Events', `${sfTotal}`], ['Accounts', `${maigretAccounts.length}`],
+      ];
+      if (profile.emails.length) metaPairs.push(['Email', profile.emails.join(', ')]);
+      metaPairs.forEach(([k, v]) => {
+        ensureSpace(13);
+        doc.fillColor(C.muted).font('Helvetica-Bold').fontSize(8).text(k + ':', M, doc.y, { width: 72 });
+        doc.fillColor(C.text).font('Helvetica').fontSize(8).text(v, M + 74, doc.y, { width: W - 74 });
+        doc.y += 12;
+      });
+
+      doc.y += 8;
+      doc.save().rect(M, doc.y, W, 1).fill(C.rule).restore();
+      doc.y += 10;
+
+      // Timeline
+      if (profile.timeline.length) {
+        doc.fillColor(C.navy).font('Helvetica-Bold').fontSize(10).text('Digital Footprint Timeline', M, doc.y);
+        doc.y += 6;
+        for (const { site, date } of profile.timeline) {
+          ensureSpace(13);
+          doc.fillColor(C.muted).font('Helvetica').fontSize(8.5)
+             .text(date.toISOString().slice(0, 10), M, doc.y, { width: 88 });
+          doc.fillColor(C.text).font('Helvetica').fontSize(8.5)
+             .text(site, M + 90, doc.y, { width: W - 90 });
+          doc.y += 12;
+        }
+        doc.y += 6;
+      }
+
+      // Social reach
+      if (profile.socialStats.length) {
+        ensureSpace(20);
+        doc.fillColor(C.navy).font('Helvetica-Bold').fontSize(10).text('Social Reach', M, doc.y);
+        doc.y += 6;
+        for (const { site, followers, following, posts } of profile.socialStats) {
+          ensureSpace(13);
+          const parts = [];
+          if (followers) parts.push(`${followers.toLocaleString()} followers`);
+          if (following) parts.push(`${following.toLocaleString()} following`);
+          if (posts)     parts.push(`${posts.toLocaleString()} posts`);
+          doc.fillColor(C.text).font('Helvetica-Bold').fontSize(8.5).text(site, M, doc.y, { width: 110 });
+          doc.fillColor(C.muted).font('Helvetica').fontSize(8.5).text(parts.join(' · '), M + 112, doc.y, { width: W - 112 });
+          doc.y += 13;
+        }
+        doc.y += 4;
+      }
+
+      // Additional bios
+      if (profile.bios.length > 1) {
+        ensureSpace(20);
+        doc.fillColor(C.navy).font('Helvetica-Bold').fontSize(10).text('Self-Descriptions', M, doc.y);
+        doc.y += 6;
+        for (const bio of profile.bios.slice(0, 5)) {
+          const lines = Math.ceil(bio.length / 100) + 1;
+          ensureSpace(lines * 11 + 6);
+          doc.fillColor(C.text).font('Helvetica-Oblique').fontSize(8.5)
+             .text(`"${bio}"`, M, doc.y, { width: W });
+          doc.y += lines * 11 + 4;
+        }
+      }
+
+    } else {
+      // ── Plain cover (no Maigret profile data) ────────────────────
+      doc.save().rect(0, 0, PW, 90).fill(C.navy).restore();
+      doc.fillColor(C.white).font('Helvetica-Bold').fontSize(24)
+         .text('OSINT Intelligence Dossier', M, 20, { width: W });
+      doc.fillColor(C.accent).font('Helvetica-Bold').fontSize(11)
+         .text('Confidential — WAssistent Automated Report', M, 54);
+      doc.fillColor(C.silver).font('Helvetica').fontSize(9)
+         .text(new Date().toLocaleString('en-GB'), M, 68);
+      doc.y = 106;
+
+      doc.save().rect(M, doc.y, W, 100).fill(C.ltblue).restore();
+      const metaY = doc.y + 8;
+      const pairs = [
+        ['Target',       target],
+        ['Target Type',  targetType],
+        ['Tools Used',   toolsUsed],
+        ['Status',       status || '—'],
+        ['Scan Started', started || '—'],
+        ['Scan Ended',   ended   || '—'],
+        ['SF Events',    `${sfTotal} across ${sorted.length} categories`],
+      ];
+      pairs.forEach(([k, v], i) => {
+        const ly = metaY + i * 13;
+        doc.fillColor(C.muted).font('Helvetica-Bold').fontSize(8.5).text(k + ':', M + 8, ly, { width: 100 });
+        doc.fillColor(C.text).font('Helvetica').fontSize(8.5).text(v, M + 112, ly, { width: W - 120 });
+      });
+      doc.y = metaY + pairs.length * 13 + 10;
+    }
 
     // ── Maigret section — social accounts ───────────────────────────
     if (maigretAccounts.length) {
