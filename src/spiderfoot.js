@@ -261,8 +261,9 @@ async function buildDossierPDF(target, statusArr, summaryRows, dataGroups) {
 
 // ─── Formatting helpers (text fallback) ──────────────────────────
 
+// scanlist: [id, name, target, created, started, finished, status, result_count, riskmatrix]
 function formatScanLine(s) {
-  return `• \`${s[0]}\` ${sfEmoji(s[7])} *${s[2]}* — ${s[7]}`;
+  return `• \`${s[0]}\` ${sfEmoji(s[6])} *${s[2]}* — ${s[6]} (${s[7]} events)`;
 }
 
 function formatSummaryTop(rows, max = 15) {
