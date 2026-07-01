@@ -130,14 +130,7 @@ function startMaigret(sfScanId, username) {
   const file = maigretOutputFile(sfScanId);
   maigretState.set(sfScanId, { done: false, results: null });
 
-  const MAIGRET_ARGS = [
-    username,
-    '--json', file,
-    '--all-sites',
-    '--recursive-search',
-    '--parse',
-    '--no-color',
-  ];
+  const MAIGRET_ARGS = [username, '--json', file];
 
   // Try `maigret` binary; it may also be invocable as `python3 -m maigret`
   const proc = spawn('maigret', MAIGRET_ARGS, {
