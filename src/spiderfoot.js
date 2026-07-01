@@ -2,8 +2,8 @@ import axios from 'axios';
 
 const SF_BASE = process.env.SPIDERFOOT_URL || 'http://127.0.0.1:5001';
 
-// SpiderFoot scan ID format: 8 alphanumeric chars
-const SCAN_ID_RE = /^[A-Z0-9]{8}$/i;
+// SpiderFoot scan IDs are alphanumeric strings (length varies by version)
+const SCAN_ID_RE = /^[a-z0-9]{8,36}$/i;
 
 const STATUS_EMOJI = {
   RUNNING: '🔄',
@@ -11,73 +11,65 @@ const STATUS_EMOJI = {
   ABORTED: '⛔',
   FAILED: '❌',
   STARTING: '🚀',
+  CREATED: '🕐',
 };
 
 function sfEmoji(status) {
   return STATUS_EMOJI[status?.toUpperCase()] ?? '❓';
 }
 
-function fmtDate(ts) {
-  if (!ts || ts === '0') return '—';
-  // SpiderFoot returns timestamps as seconds or ISO strings
-  const d = isNaN(ts) ? new Date(ts) : new Date(Number(ts) * 1000);
-  return d.toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
-}
+// scanlist returns: [id, name, target, created, started, finished, ended_raw, status, riskmatrix]
+// scanstatus returns: [name, target, created, started, ended, status, riskmatrix]
+// startscan returns: ["SUCCESS", scanId]  (GET request, Accept: application/json)
 
 export async function sfStartScan(target, usecase = 'all') {
   const scanname = `wabotScan_${Date.now()}`;
-  const params = new URLSearchParams({
-    scanname,
-    scantarget: target,
-    usecase,
-    typedefs: JSON.stringify([{ c: 'ALL' }]),
+  const { data } = await axios.get(`${SF_BASE}/startscan`, {
+    params: { scanname, scantarget: target, usecase, modulelist: '', typelist: '' },
+    headers: { Accept: 'application/json' },
   });
-  const { data } = await axios.post(`${SF_BASE}/api/v1/scanstart`, params.toString(), {
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-  });
-  // data is ["SUCCESS", "<scanId>"] or ["ERROR", "message"]
-  if (!Array.isArray(data)) throw new Error('Unexpected response from SpiderFoot');
-  if (data[0] !== 'SUCCESS') throw new Error(data[1] || 'SpiderFoot scan failed to start');
+  if (!Array.isArray(data) || data[0] !== 'SUCCESS') {
+    throw new Error(Array.isArray(data) ? data[1] : String(data));
+  }
   return data[1]; // scan ID
 }
 
-export async function sfListScans(limit = 5) {
-  const { data } = await axios.get(`${SF_BASE}/api/v1/scanlist`);
-  // Returns array of [id, name, target, created, started, ended, status]
+export async function sfListScans(limit = 8) {
+  const { data } = await axios.get(`${SF_BASE}/scanlist`);
   if (!Array.isArray(data)) return [];
   return data.slice(0, limit);
 }
 
 export async function sfScanStatus(scanId) {
-  const { data } = await axios.get(`${SF_BASE}/api/v1/scanstatus`, { params: { id: scanId } });
+  const { data } = await axios.get(`${SF_BASE}/scanstatus`, { params: { id: scanId } });
   if (!Array.isArray(data)) throw new Error('Unexpected response');
-  return data; // [id, name, target, created, started, ended, status]
+  return data; // [name, target, created, started, ended, status, riskmatrix]
 }
 
 export async function sfScanSummary(scanId) {
-  const { data } = await axios.get(`${SF_BASE}/api/v1/scansummary`, { params: { id: scanId, by: 'type' } });
-  // Returns array of [event_type, count, discovered_by]
+  const { data } = await axios.get(`${SF_BASE}/scansummary`, { params: { id: scanId, by: 'type' } });
   return Array.isArray(data) ? data : [];
 }
 
 export async function sfStopScan(scanId) {
-  const { data } = await axios.get(`${SF_BASE}/api/v1/stopscan`, { params: { id: scanId } });
-  return data;
+  await axios.get(`${SF_BASE}/stopscan`, { params: { id: scanId } });
 }
 
 export async function sfDeleteScan(scanId) {
-  const { data } = await axios.get(`${SF_BASE}/api/v1/scandelete`, { params: { id: scanId } });
-  return data;
+  await axios.get(`${SF_BASE}/scandelete`, { params: { id: scanId } });
 }
 
-// Format scan list entry: [id, name, target, created, started, ended, status]
+// scanlist row: [id, name, target, created, started, finished, ended_raw, status, riskmatrix]
 function formatScanLine(s) {
-  const [id, , target, , , , status] = s;
+  const id = s[0];
+  const target = s[2];
+  const status = s[7];
   return `• \`${id}\` ${sfEmoji(status)} *${target}* — ${status}`;
 }
 
 function formatSummaryTop(rows, max = 15) {
   if (!rows.length) return 'No findings yet.';
+  // rows: [event_type, count, lastseen, fp_status, correlation_risk, scan_status]
   const sorted = [...rows].sort((a, b) => b[1] - a[1]);
   const top = sorted.slice(0, max);
   const lines = top.map(([type, count]) => `• ${count}× ${type}`);
@@ -86,8 +78,6 @@ function formatSummaryTop(rows, max = 15) {
 }
 
 export async function handleSpiderfootCommand(text) {
-  const lower = text.trim().toLowerCase();
-
   // spiderfoot scans
   if (/^spiderfoot scans?$/i.test(text.trim())) {
     try {
@@ -100,29 +90,43 @@ export async function handleSpiderfootCommand(text) {
   }
 
   // spiderfoot status <id>
-  const statusMatch = text.trim().match(/^spiderfoot status\s+([A-Z0-9]+)$/i);
+  const statusMatch = text.trim().match(/^spiderfoot status\s+(\S+)$/i);
   if (statusMatch) {
-    if (!SCAN_ID_RE.test(statusMatch[1])) return '❌ Invalid scan ID (8 alphanumeric chars).';
+    const id = statusMatch[1];
+    if (!SCAN_ID_RE.test(id)) return '❌ Invalid scan ID format.';
     try {
-      const s = await sfScanStatus(statusMatch[1].toUpperCase());
-      const [id, name, target, created, started, ended, status] = s;
-      return `🕷️ *Scan Status*\n• ID: \`${id}\`\n• Target: *${target}*\n• Status: ${sfEmoji(status)} ${status}\n• Started: ${fmtDate(started)}\n• Ended: ${fmtDate(ended)}`;
+      const s = await sfScanStatus(id);
+      // [name, target, created, started, ended, status, riskmatrix]
+      const [name, target, created, started, ended, status, risk] = s;
+      const riskLine = risk
+        ? `• Risk: 🔴 ${risk.HIGH ?? 0} high / 🟠 ${risk.MEDIUM ?? 0} med / 🟡 ${risk.LOW ?? 0} low`
+        : '';
+      return [
+        `🕷️ *Scan Status*`,
+        `• ID: \`${id}\``,
+        `• Target: *${target}*`,
+        `• Status: ${sfEmoji(status)} ${status}`,
+        `• Started: ${started || '—'}`,
+        `• Ended: ${ended || '—'}`,
+        riskLine,
+      ].filter(Boolean).join('\n');
     } catch (err) {
       return `❌ SpiderFoot error: ${err.message}`;
     }
   }
 
   // spiderfoot results <id>
-  const resultsMatch = text.trim().match(/^spiderfoot results?\s+([A-Z0-9]+)$/i);
+  const resultsMatch = text.trim().match(/^spiderfoot results?\s+(\S+)$/i);
   if (resultsMatch) {
-    if (!SCAN_ID_RE.test(resultsMatch[1])) return '❌ Invalid scan ID (8 alphanumeric chars).';
+    const id = resultsMatch[1];
+    if (!SCAN_ID_RE.test(id)) return '❌ Invalid scan ID format.';
     try {
-      const [status, summary] = await Promise.all([
-        sfScanStatus(resultsMatch[1].toUpperCase()),
-        sfScanSummary(resultsMatch[1].toUpperCase()),
+      const [statusData, summary] = await Promise.all([
+        sfScanStatus(id),
+        sfScanSummary(id),
       ]);
-      const [id, , target, , , , scanStatus] = status;
-      const total = summary.reduce((acc, r) => acc + r[1], 0);
+      const [, target, , , , scanStatus] = statusData;
+      const total = summary.reduce((acc, r) => acc + (r[1] || 0), 0);
       return `🕷️ *Scan Results — ${target}*\nStatus: ${sfEmoji(scanStatus)} ${scanStatus} | Total events: ${total}\n\n${formatSummaryTop(summary)}`;
     } catch (err) {
       return `❌ SpiderFoot error: ${err.message}`;
@@ -130,37 +134,35 @@ export async function handleSpiderfootCommand(text) {
   }
 
   // spiderfoot stop <id>
-  const stopMatch = text.trim().match(/^spiderfoot stop\s+([A-Z0-9]+)$/i);
+  const stopMatch = text.trim().match(/^spiderfoot stop\s+(\S+)$/i);
   if (stopMatch) {
-    if (!SCAN_ID_RE.test(stopMatch[1])) return '❌ Invalid scan ID (8 alphanumeric chars).';
+    const id = stopMatch[1];
+    if (!SCAN_ID_RE.test(id)) return '❌ Invalid scan ID format.';
     try {
-      await sfStopScan(stopMatch[1].toUpperCase());
-      return `⛔ Scan \`${stopMatch[1].toUpperCase()}\` stop requested.`;
+      await sfStopScan(id);
+      return `⛔ Scan \`${id}\` stop requested.`;
     } catch (err) {
       return `❌ SpiderFoot error: ${err.message}`;
     }
   }
 
   // spiderfoot delete <id>
-  const deleteMatch = text.trim().match(/^spiderfoot delete\s+([A-Z0-9]+)$/i);
+  const deleteMatch = text.trim().match(/^spiderfoot delete\s+(\S+)$/i);
   if (deleteMatch) {
-    if (!SCAN_ID_RE.test(deleteMatch[1])) return '❌ Invalid scan ID (8 alphanumeric chars).';
+    const id = deleteMatch[1];
+    if (!SCAN_ID_RE.test(id)) return '❌ Invalid scan ID format.';
     try {
-      await sfDeleteScan(deleteMatch[1].toUpperCase());
-      return `🗑️ Scan \`${deleteMatch[1].toUpperCase()}\` deleted.`;
+      await sfDeleteScan(id);
+      return `🗑️ Scan \`${id}\` deleted.`;
     } catch (err) {
       return `❌ SpiderFoot error: ${err.message}`;
     }
   }
 
   // spiderfoot <target>  — start a scan
-  const scanMatch = text.trim().match(/^spiderfoot\s+(.+)$/i);
+  const scanMatch = text.trim().match(/^spiderfoot\s+(\S+)$/i);
   if (scanMatch) {
-    const target = scanMatch[1].trim();
-    // Basic sanity: reject obviously empty or multi-word targets that don't look like targets
-    if (!target || target.includes(' ')) {
-      return spiderfootHelp();
-    }
+    const target = scanMatch[1];
     try {
       const scanId = await sfStartScan(target);
       return `🕷️ Scan started!\n• Target: *${target}*\n• ID: \`${scanId}\`\n\nCheck progress: \`spiderfoot status ${scanId}\`\nView results: \`spiderfoot results ${scanId}\``;
@@ -169,7 +171,7 @@ export async function handleSpiderfootCommand(text) {
     }
   }
 
-  return false;
+  return spiderfootHelp();
 }
 
 export function spiderfootHelp() {
