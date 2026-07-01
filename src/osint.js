@@ -234,6 +234,9 @@ export function setOsintPollMinutes(minutes) {
 // ─── Poll loop ─────────────────────────────────────────────────────
 
 async function pollOnce(sfScanId, record) {
+  // Bail if already completed and removed (e.g. a queued timeout fired after dossier was sent)
+  if (!getPending()[sfScanId]) return;
+
   const { target, targetType, maigret: usesMaigret } = record;
 
   // 1. Check SpiderFoot
