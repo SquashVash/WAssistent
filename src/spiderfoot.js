@@ -69,10 +69,10 @@ function formatScanLine(s) {
 
 function formatSummaryTop(rows, max = 15) {
   if (!rows.length) return 'No findings yet.';
-  // rows: [event_type, count, lastseen, fp_status, correlation_risk, scan_status]
-  const sorted = [...rows].sort((a, b) => b[1] - a[1]);
+  // rows: [type_code, type_label, count, lastseen, fp_status, ...]
+  const sorted = [...rows].sort((a, b) => b[2] - a[2]);
   const top = sorted.slice(0, max);
-  const lines = top.map(([type, count]) => `• ${count}× ${type}`);
+  const lines = top.map(([, label, count]) => `• ${count}× ${label}`);
   if (sorted.length > max) lines.push(`…and ${sorted.length - max} more event types`);
   return lines.join('\n');
 }
@@ -126,7 +126,7 @@ export async function handleSpiderfootCommand(text) {
         sfScanSummary(id),
       ]);
       const [, target, , , , scanStatus] = statusData;
-      const total = summary.reduce((acc, r) => acc + (r[1] || 0), 0);
+      const total = summary.reduce((acc, r) => acc + (r[2] || 0), 0);
       return `🕷️ *Scan Results — ${target}*\nStatus: ${sfEmoji(scanStatus)} ${scanStatus} | Total events: ${total}\n\n${formatSummaryTop(summary)}`;
     } catch (err) {
       return `❌ SpiderFoot error: ${err.message}`;
