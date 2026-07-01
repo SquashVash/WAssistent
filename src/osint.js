@@ -107,18 +107,19 @@ function parseMaigretJson(raw) {
   let data;
   try { data = JSON.parse(raw); } catch { return []; }
 
-  // Simple format: { "SiteName": { "site": { tags, urlMain, ... }, "username": "...", "status": "Claimed"|"Available"|..., "url": "..." } }
+  // Simple format: { "SiteName": { "site": {...}, "status": { "status": "Claimed", "url": "...", "tags": [...], "ids": {...} } } }
   const sites = data.sites || data;
   if (typeof sites !== 'object' || Array.isArray(sites)) return [];
 
   const accounts = [];
   for (const [siteName, info] of Object.entries(sites)) {
     if (!info || typeof info !== 'object') continue;
-    if (!/claimed/i.test(String(info.status || ''))) continue;
-    const tags = Array.isArray(info.site?.tags) ? info.site.tags : [];
+    const s = info.status;
+    if (!s || typeof s !== 'object') continue;
+    if (!/claimed/i.test(String(s.status || ''))) continue;
+    const tags = Array.isArray(s.tags) ? s.tags : [];
     const category = tags[0] || 'social';
-    const url = info.url || info.url_user || info.site?.urlMain || '';
-    accounts.push({ site: siteName, url, category });
+    accounts.push({ site: siteName, url: s.url || '', category });
   }
   return accounts.sort((a, b) => a.category.localeCompare(b.category) || a.site.localeCompare(b.site));
 }
