@@ -582,166 +582,110 @@ async function buildDossierPDF(target, targetType, statusArr, summaryRows, dataG
       doc.y = metaY + pairs.length * 13 + 10;
     }
 
-    // ── Maigret section — social accounts ───────────────────────────
-    if (maigretAccounts.length) {
+    // ── Unified intelligence pages — one per category ───────────────
+    const SKIP_ID_KEYS = new Set(['image', 'avatar', 'profile_image', 'profile_picture',
+      'uid', 'id', 'sec_uid', 'tiktok_id', 'is_secret']);
+    const ID_LABEL_MAP = {
+      fullname: 'Name', full_name: 'Name', display_name: 'Name', realname: 'Name',
+      bio: 'Bio', description: 'Bio', about: 'Bio', summary: 'Bio',
+      email: 'Email',
+      follower_count: 'Followers', followers_count: 'Followers', followers: 'Followers',
+      following_count: 'Following', following: 'Following',
+      posts_count: 'Posts', tweet_count: 'Posts', video_count: 'Videos',
+      public_repos_count: 'Repos', public_gists_count: 'Gists',
+      heart_count: 'Likes', digg_count: 'Diggs', reputation_count: 'Reputation',
+      created_at: 'Joined', is_verified: 'Verified',
+    };
+
+    // Build unified category map — Maigret accounts first, then SF data
+    // SF values that duplicate a Maigret URL are skipped
+    const maigretUrls = new Set(maigretAccounts.map(a => a.url).filter(Boolean));
+    const allCategories = new Map();
+
+    for (const acc of maigretAccounts) {
+      const cat = acc.category.charAt(0).toUpperCase() + acc.category.slice(1);
+      if (!allCategories.has(cat)) allCategories.set(cat, []);
+      allCategories.get(cat).push({ _src: 'maigret', ...acc });
+    }
+
+    for (const [label, entries] of dataGroups) {
+      const deduped = entries.filter(e => !maigretUrls.has(e.value));
+      if (!deduped.length) continue;
+      if (!allCategories.has(label)) allCategories.set(label, []);
+      allCategories.get(label).push(...deduped.map(e => ({ _src: 'sf', ...e })));
+    }
+
+    for (const [catLabel, items] of allCategories) {
       doc.addPage();
-      addPageBanner('Online Presence — Maigret', `${maigretAccounts.length} accounts found across platforms`);
+      addPageBanner(catLabel, `${items.length} item${items.length !== 1 ? 's' : ''}`);
 
-      // Group by category
-      const byCategory = new Map();
-      for (const acc of maigretAccounts) {
-        if (!byCategory.has(acc.category)) byCategory.set(acc.category, []);
-        byCategory.get(acc.category).push(acc);
-      }
-
-      for (const [cat, accounts] of byCategory) {
-        ensureSpace(30);
-        doc.fillColor(C.navy).font('Helvetica-Bold').fontSize(11)
-           .text(cat.charAt(0).toUpperCase() + cat.slice(1), M, doc.y);
-        doc.y += 4;
-        hRule();
-
-        accounts.forEach((acc, idx) => {
-          const ids = acc.ids || {};
-
-          // Build detail lines from ids (skip image/uid internals)
-          const SKIP_ID_KEYS = new Set(['image', 'avatar', 'profile_image', 'profile_picture',
-            'uid', 'id', 'sec_uid', 'tiktok_id', 'is_secret']);
-          const LABEL_MAP = {
-            fullname: 'Name', full_name: 'Name', display_name: 'Name', realname: 'Name',
-            bio: 'Bio', description: 'Bio', about: 'Bio', summary: 'Bio',
-            email: 'Email',
-            follower_count: 'Followers', followers_count: 'Followers', followers: 'Followers',
-            following_count: 'Following', following: 'Following',
-            posts_count: 'Posts', tweet_count: 'Posts', video_count: 'Videos',
-            public_repos_count: 'Repos', public_gists_count: 'Gists',
-            heart_count: 'Likes', digg_count: 'Diggs', reputation_count: 'Reputation',
-            created_at: 'Joined', is_verified: 'Verified',
-          };
+      items.forEach((item, idx) => {
+        if (item._src === 'maigret') {
+          // ── Maigret card ─────────────────────────────────────────
+          const ids = item.ids || {};
           const details = [];
           for (const [k, v] of Object.entries(ids)) {
             if (SKIP_ID_KEYS.has(k) || !v || v === 'False' || v === '0' || v === 0) continue;
-            const label = LABEL_MAP[k];
-            if (!label) continue;
+            const lbl = ID_LABEL_MAP[k];
+            if (!lbl) continue;
             let display = String(v);
-            if (k === 'created_at') {
-              const d = new Date(v);
-              display = isNaN(d) ? v : d.toISOString().slice(0, 10);
-            }
+            if (k === 'created_at') { const d = new Date(v); display = isNaN(d) ? v : d.toISOString().slice(0, 10); }
             if (k === 'is_verified' && display === 'True') display = 'Yes';
-            details.push({ label, display });
+            details.push({ label: lbl, display });
           }
-
-          // Estimate row height: url line + each detail line
-          const urlLines  = Math.ceil((acc.url.length || 1) / 95) || 1;
-          const rowH = 6 + urlLines * 11 + details.length * 11 + 8;
+          const urlLines = Math.ceil((item.url.length || 1) / 95) || 1;
+          const rowH = 6 + 13 + urlLines * 11 + details.length * 11 + 8;
           ensureSpace(rowH + 4);
-
           const ey = doc.y;
           if (idx % 2 === 0) doc.save().rect(M, ey, W, rowH).fill(C.bg).restore();
-
-          // Index badge
           doc.save().rect(M, ey + 4, 22, 13).fill(C.green).restore();
           doc.fillColor(C.white).font('Helvetica-Bold').fontSize(7)
              .text(String(idx + 1), M + 1, ey + 6, { width: 20, align: 'center' });
-
-          // Site name
           doc.fillColor(C.text).font('Helvetica-Bold').fontSize(10)
-             .text(acc.site, M + 28, ey + 5, { width: W - 28 });
-
+             .text(item.site, M + 28, ey + 5, { width: W - 28 });
           let innerY = ey + 5 + 13;
-
-          // URL
-          if (acc.url) {
+          if (item.url) {
             doc.fillColor(C.accent).font('Helvetica').fontSize(8.5)
-               .text(acc.url, M + 28, innerY, { width: W - 28, link: acc.url });
+               .text(item.url, M + 28, innerY, { width: W - 28, link: item.url });
             innerY += urlLines * 11;
           }
-
-          // Detail fields
-          for (const { label, display } of details) {
-            doc.fillColor(C.muted).font('Helvetica-Bold').fontSize(8)
-               .text(label + ':', M + 28, innerY, { width: 65 });
-            doc.fillColor(C.text).font('Helvetica').fontSize(8)
-               .text(display, M + 96, innerY, { width: W - 96 });
+          for (const { label: lbl, display } of details) {
+            doc.fillColor(C.muted).font('Helvetica-Bold').fontSize(8).text(lbl + ':', M + 28, innerY, { width: 65 });
+            doc.fillColor(C.text).font('Helvetica').fontSize(8).text(display, M + 96, innerY, { width: W - 96 });
             innerY += 11;
           }
-
           doc.y = ey + rowH;
           doc.moveDown(0.1);
-        });
-        doc.moveDown(0.5);
-      }
-    }
 
-    // ── SpiderFoot: Event Type Summary ──────────────────────────────
-    if (sorted.length) {
-      doc.addPage();
-      addPageBanner('SpiderFoot Intelligence', `${sfTotal} events across ${sorted.length} categories`);
-
-      const cx1 = M, cw1 = W * 0.62;
-      const cx2 = M + W * 0.63, cw2 = W * 0.17;
-      const cx3 = M + W * 0.82, cw3 = W * 0.18;
-
-      const thY = doc.y;
-      doc.save().rect(M, thY, W, 18).fill(C.navy).restore();
-      doc.fillColor(C.white).font('Helvetica-Bold').fontSize(8.5);
-      doc.text('Event Type', cx1 + 4, thY + 5, { width: cw1 - 4 });
-      doc.text('Total',      cx2,     thY + 5, { width: cw2, align: 'right' });
-      doc.text('Unique',     cx3,     thY + 5, { width: cw3, align: 'right' });
-      doc.y = thY + 20;
-
-      sorted.forEach((r, i) => {
-        ensureSpace(16);
-        const ry = doc.y;
-        if (i % 2 === 1) doc.save().rect(M, ry, W, 15).fill(C.bg).restore();
-        doc.fillColor(C.text).font('Helvetica').fontSize(8.5);
-        doc.text(r[1] || r[0], cx1 + 4, ry + 3, { width: cw1 - 4 });
-        doc.text(String(r[3] || 0), cx2, ry + 3, { width: cw2, align: 'right' });
-        doc.text(String(r[4] || 0), cx3, ry + 3, { width: cw3, align: 'right' });
-        doc.y = ry + 15;
-      });
-    }
-
-    // ── SpiderFoot: Data pages — one per event type ─────────────────
-    for (const [label, entries] of dataGroups) {
-      doc.addPage();
-      addPageBanner(label, `${entries.length} unique value${entries.length !== 1 ? 's' : ''}`);
-
-      entries.forEach((entry, idx) => {
-        const valueLines = Math.ceil(entry.value.length / 90) || 1;
-        const srcLines   = entry.source && entry.source !== entry.value
-          ? Math.ceil(entry.source.length / 100) + 1 : 0;
-        const rowH = (valueLines + srcLines) * 12 + 16;
-        ensureSpace(rowH);
-
-        const ey = doc.y;
-        if (idx % 2 === 0) doc.save().rect(M, ey, W, rowH).fill(C.bg).restore();
-
-        doc.save().rect(M, ey + 4, 22, 12).fill(C.navy).restore();
-        doc.fillColor(C.white).font('Helvetica-Bold').fontSize(7)
-           .text(String(idx + 1), M + 1, ey + 6, { width: 20, align: 'center' });
-
-        doc.fillColor(C.text).font('Helvetica-Bold').fontSize(10)
-           .text(entry.value, M + 28, ey + 5, { width: W - 28 });
-
-        let innerY = ey + 5 + valueLines * 12 + 2;
-
-        if (entry.source && entry.source !== entry.value) {
-          const srcDisplay = entry.source.length > 180 ? entry.source.slice(0, 180) + '…' : entry.source;
-          doc.fillColor(C.muted).font('Helvetica').fontSize(8)
-             .text('Source: ' + srcDisplay, M + 28, innerY, { width: W - 28 });
-          innerY += srcLines * 10 + 2;
+        } else {
+          // ── SpiderFoot card ───────────────────────────────────────
+          const valueLines = Math.ceil(item.value.length / 90) || 1;
+          const srcLines   = item.source && item.source !== item.value
+            ? Math.ceil(item.source.length / 100) + 1 : 0;
+          const rowH = (valueLines + srcLines) * 12 + 16;
+          ensureSpace(rowH);
+          const ey = doc.y;
+          if (idx % 2 === 0) doc.save().rect(M, ey, W, rowH).fill(C.bg).restore();
+          doc.save().rect(M, ey + 4, 22, 12).fill(C.navy).restore();
+          doc.fillColor(C.white).font('Helvetica-Bold').fontSize(7)
+             .text(String(idx + 1), M + 1, ey + 6, { width: 20, align: 'center' });
+          doc.fillColor(C.text).font('Helvetica-Bold').fontSize(10)
+             .text(item.value, M + 28, ey + 5, { width: W - 28 });
+          let innerY = ey + 5 + valueLines * 12 + 2;
+          if (item.source && item.source !== item.value) {
+            const srcDisplay = item.source.length > 180 ? item.source.slice(0, 180) + '…' : item.source;
+            doc.fillColor(C.muted).font('Helvetica').fontSize(8)
+               .text('Source: ' + srcDisplay, M + 28, innerY, { width: W - 28 });
+            innerY += srcLines * 10 + 2;
+          }
+          const metaStr = [item.module, item.lastseen].filter(Boolean).join('  ·  ');
+          if (metaStr) {
+            doc.fillColor(C.silver).font('Helvetica').fontSize(7.5)
+               .text(metaStr, M + 28, innerY, { width: W - 28 });
+          }
+          doc.y = ey + rowH;
+          doc.moveDown(0.1);
         }
-
-        const metaStr = [entry.module, entry.lastseen].filter(Boolean).join('  ·  ');
-        if (metaStr) {
-          doc.fillColor(C.silver).font('Helvetica').fontSize(7.5)
-             .text(metaStr, M + 28, innerY, { width: W - 28 });
-        }
-
-        doc.y = ey + rowH;
-        doc.moveDown(0.1);
       });
     }
 
