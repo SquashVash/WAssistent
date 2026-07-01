@@ -169,7 +169,11 @@ function finalizeMaigret(sfScanId, dir, debugOutput = '') {
     for (const f of jsonFiles) {
       try {
         const raw = readFileSync(join(dir, f), 'utf-8');
-        console.log(`🔍 Maigret ${f} (first 400): ${raw.slice(0, 400)}`);
+        const parsed = JSON.parse(raw);
+        const sample = Object.entries(parsed).slice(0, 3).map(([k, v]) =>
+          `${k}: status=${JSON.stringify(v?.status)} url=${JSON.stringify(v?.url)}`
+        );
+        console.log(`🔍 Maigret ${f} sample:\n${sample.join('\n')}`);
         allResults.push(...parseMaigretJson(raw));
       } catch (e) {
         console.error(`🔍 Maigret parse error (${f}): ${e.message}`);
