@@ -7,6 +7,36 @@ const SCAN_ID_RE = /^[a-z0-9]{8,36}$/i;
 // Noisy types whose raw values don't add readable signal
 const SKIP_TYPES = new Set(['RAW_RIR_DATA', 'RAW_FILE_META_DATA', 'BASE64_DATA', 'SIMILARDOMAIN']);
 
+// scaneventresults row layout (after webui remapping):
+// [0]  lastseen (formatted)
+// [1]  event_data (html-escaped)
+// [2]  source_data (html-escaped)
+// [3]  module
+// [4]  confidence   ← NOT the type; was row[5] in SQL
+// [5]  visibility
+// [6]  risk
+// [7]  hash
+// [8]  row[13]
+// [9]  row[14]
+// [10] type code    ← row[4] in SQL, moved to end by webui
+
+function htmlUnescape(str) {
+  return str
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
+}
+
+function cleanValue(raw) {
+  const s = htmlUnescape(String(raw || '').trim());
+  // Extract URL from SpiderFoot's <SFURL>url</SFURL> wrapper
+  const sfurl = s.match(/<SFURL>([\s\S]*?)<\/SFURL>/);
+  if (sfurl) return sfurl[1].trim();
+  return s;
+}
+
 const STATUS_EMOJI = {
   RUNNING: '🔄',
   FINISHED: '✅',
@@ -87,16 +117,14 @@ function formatSummaryTop(rows, max = 15) {
 }
 
 function buildDataGroups(rows, typeLabels) {
-  // Group unique values by human-readable type label
   const groups = new Map();
   for (const row of rows) {
-    const typeCode = row[4];
+    const typeCode = row[10]; // type is at index 10 after webui field remapping
     if (!typeCode || typeCode === 'ROOT' || SKIP_TYPES.has(typeCode)) continue;
-    const value = String(row[1] || '').trim();
+    const value = cleanValue(row[1]);
     if (!value) continue;
     const label = typeLabels[typeCode] || typeCode;
     if (!groups.has(label)) groups.set(label, new Set());
-    // Truncate very long individual values (e.g. raw HTML blobs)
     groups.get(label).add(value.length > 200 ? value.slice(0, 200) + '…' : value);
   }
   return groups;
