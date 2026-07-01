@@ -128,32 +128,45 @@ function startMaigret(sfScanId, username) {
   const dir = maigretOutputDir(sfScanId);
   maigretState.set(sfScanId, { done: false, results: null });
 
-  // -J simple: write a simple JSON report; --folderoutput: where to put it
-  const MAIGRET_ARGS = [username, '-J', 'simple', '--folderoutput', dir];
+  // When the name has a space, search both "First Last" and "FirstLast"
+  const usernames = [username];
+  if (username.includes(' ')) usernames.push(username.replace(/\s+/g, ''));
 
-  function spawnMaigret(bin, args) {
-    const proc = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'] });
-    let output = '';
-    proc.stdout.on('data', d => { output += d.toString(); });
-    proc.stderr.on('data', d => { output += d.toString(); });
-    proc.on('close', (code) => {
-      console.log(`🔍 Maigret exit ${code} | dir: ${dir}`);
-      finalizeMaigret(sfScanId, dir, output);
+  const COMMON_ARGS = ['-J', 'simple', '--folderoutput', dir];
+
+  function runNext(index, lastOutput) {
+    if (index >= usernames.length) {
+      finalizeMaigret(sfScanId, dir, lastOutput);
+      return;
+    }
+    const name = usernames[index];
+    const args = [name, ...COMMON_ARGS];
+
+    function spawnOne(bin, fullArgs) {
+      const proc = spawn(bin, fullArgs, { stdio: ['ignore', 'pipe', 'pipe'] });
+      let output = '';
+      proc.stdout.on('data', d => { output += d.toString(); });
+      proc.stderr.on('data', d => { output += d.toString(); });
+      proc.on('close', (code) => {
+        console.log(`🔍 Maigret exit ${code} for "${name}" | dir: ${dir}`);
+        runNext(index + 1, output);
+      });
+      return proc;
+    }
+
+    // Try `maigret` binary; fallback to `python3 -m maigret`
+    const proc = spawnOne('maigret', args);
+    proc.on('error', (err) => {
+      if (err.code === 'ENOENT') {
+        const proc2 = spawnOne('python3', ['-m', 'maigret', ...args]);
+        proc2.on('error', () => runNext(index + 1, 'python3 not found'));
+      } else {
+        runNext(index + 1, err.message);
+      }
     });
-    return proc;
   }
 
-  // Try `maigret` binary; fallback to `python3 -m maigret`
-  const proc = spawnMaigret('maigret', MAIGRET_ARGS);
-
-  proc.on('error', (err) => {
-    if (err.code === 'ENOENT') {
-      const proc2 = spawnMaigret('python3', ['-m', 'maigret', ...MAIGRET_ARGS]);
-      proc2.on('error', () => finalizeMaigret(sfScanId, dir, 'python3 not found'));
-    } else {
-      finalizeMaigret(sfScanId, dir, err.message);
-    }
-  });
+  runNext(0, '');
 }
 
 function finalizeMaigret(sfScanId, dir, debugOutput = '') {
