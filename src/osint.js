@@ -166,30 +166,31 @@ function finalizeMaigret(sfScanId, dir, debugOutput = '') {
   state.done = true;
 
   // Maigret writes report_<username>_<timestamp>.json into the folder
-  let jsonFile = null;
-  try {
-    const files = readdirSync(dir);
-    jsonFile = files.find(f => f.endsWith('.json'));
-  } catch {}
+  let jsonFiles = [];
+  try { jsonFiles = readdirSync(dir).filter(f => f.endsWith('.json')); } catch {}
 
-  // Log what's actually in our temp dir and the default reports/ dir
-  try { console.log(`🔍 Maigret temp dir contents: [${readdirSync(dir).join(', ')}]`); } catch {}
-  try {
-    const def = join(process.cwd(), 'reports');
-    if (existsSync(def)) console.log(`🔍 Maigret ./reports/ contents: [${readdirSync(def).join(', ')}]`);
-  } catch {}
-
-  if (jsonFile) {
-    try {
-      const raw = readFileSync(join(dir, jsonFile), 'utf-8');
-      state.results = parseMaigretJson(raw);
-    } catch (e) {
-      console.error(`🔍 Maigret parse error: ${e.message}`);
-      state.results = [];
+  if (jsonFiles.length) {
+    const allResults = [];
+    for (const f of jsonFiles) {
+      try {
+        const raw = readFileSync(join(dir, f), 'utf-8');
+        console.log(`🔍 Maigret ${f} (first 400): ${raw.slice(0, 400)}`);
+        allResults.push(...parseMaigretJson(raw));
+      } catch (e) {
+        console.error(`🔍 Maigret parse error (${f}): ${e.message}`);
+      }
     }
+    // Deduplicate by site+url
+    const seen = new Set();
+    state.results = allResults.filter(a => {
+      const key = `${a.site}|${a.url}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
     try { rmSync(dir, { recursive: true, force: true }); } catch {}
   } else {
-    console.log(`🔍 Maigret: no JSON in temp dir. Output:\n${debugOutput.slice(-800)}`);
+    console.log(`🔍 Maigret: no JSON in ${dir}. Output:\n${debugOutput.slice(-800)}`);
     state.results = [];
   }
   console.log(`🔍 Maigret done for ${sfScanId}: ${state.results.length} accounts found`);
