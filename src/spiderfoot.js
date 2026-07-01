@@ -56,10 +56,32 @@ function sfEmoji(status) {
 // scaneventresults rows: [lastseen, event_data, source_data, module, event_type, fp_status, ...]
 // startscan returns: ["SUCCESS", scanId]  (GET, Accept: application/json)
 
+// SpiderFoot requires usernames and human names to be wrapped in double quotes.
+// targetTypeFromString() patterns (in priority order):
+//   IP          ^[0-9]{1,3}(\.[0-9]{1,3}){3}$
+//   CIDR        ^[0-9]{1,3}(\.[0-9]{1,3}){3}/\d+$
+//   email       ^.*@.*$
+//   phone       ^\+[0-9]+$
+//   human name  ^".+\s+.+"$   (quoted, contains space)
+//   username    ^".+"$         (quoted, no space)
+//   ASN         ^[0-9]+$
+//   domain      ([a-z0-9][-a-z0-9]*[a-z0-9])\.
+function prepareTarget(raw) {
+  const t = raw.trim();
+  if (t.startsWith('"') && t.endsWith('"')) return t; // already quoted
+  if (/^[0-9]{1,3}(\.[0-9]{1,3}){3}(\/\d+)?$/.test(t)) return t; // IP / CIDR
+  if (/^.*@.*$/.test(t)) return t;                                   // email
+  if (/^\+[0-9]+$/.test(t)) return t;                               // phone
+  if (/^[0-9]+$/.test(t)) return t;                                  // ASN
+  if (/([a-z0-9][-a-z0-9]*[a-z0-9])\.[a-z]/i.test(t)) return t;   // domain
+  return `"${t}"`;  // username or human name
+}
+
 export async function sfStartScan(target, usecase = 'all') {
+  const scantarget = prepareTarget(target);
   const scanname = `wabotScan_${Date.now()}`;
   const { data } = await axios.get(`${SF_BASE}/startscan`, {
-    params: { scanname, scantarget: target, usecase, modulelist: '', typelist: '' },
+    params: { scanname, scantarget, usecase, modulelist: '', typelist: '' },
     headers: { Accept: 'application/json' },
   });
   if (!Array.isArray(data) || data[0] !== 'SUCCESS') {
@@ -244,10 +266,11 @@ export async function handleSpiderfootCommand(text) {
     }
   }
 
-  // spiderfoot <target>  — start a scan
-  const scanMatch = text.trim().match(/^spiderfoot\s+(\S+)$/i);
+  // spiderfoot <target>  — start a scan (catch-all, must stay last)
+  // Accepts single words (username/domain/IP/email) and multi-word (human names)
+  const scanMatch = text.trim().match(/^spiderfoot\s+(.+)$/i);
   if (scanMatch) {
-    const target = scanMatch[1];
+    const target = scanMatch[1].trim();
     try {
       const scanId = await sfStartScan(target);
       return `🕷️ Scan started!\n• Target: *${target}*\n• ID: \`${scanId}\`\n\nCheck progress: \`spiderfoot status ${scanId}\`\nView results: \`spiderfoot results ${scanId}\`\nSee actual data: \`spiderfoot data ${scanId}\``;
