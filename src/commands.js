@@ -325,7 +325,7 @@ export async function handleCommand(msg) {
     },
     osint: {
       emoji: '🕷️',
-      label: 'OSINT / SpiderFoot',
+      label: 'OSINT',
       text: spiderfootHelp(),
     },
     other: {
