@@ -634,19 +634,73 @@ async function buildDossierPDF(target, targetType, statusArr, summaryRows, dataG
         hRule();
 
         accounts.forEach((acc, idx) => {
-          ensureSpace(22);
-          const ey = doc.y;
-          if (idx % 2 === 0) doc.save().rect(M, ey, W, 20).fill(C.bg).restore();
+          const ids = acc.ids || {};
 
-          doc.save().rect(M, ey + 4, 22, 12).fill(C.green).restore();
+          // Build detail lines from ids (skip image/uid internals)
+          const SKIP_ID_KEYS = new Set(['image', 'avatar', 'profile_image', 'profile_picture',
+            'uid', 'id', 'sec_uid', 'tiktok_id', 'is_secret']);
+          const LABEL_MAP = {
+            fullname: 'Name', full_name: 'Name', display_name: 'Name', realname: 'Name',
+            bio: 'Bio', description: 'Bio', about: 'Bio', summary: 'Bio',
+            email: 'Email',
+            follower_count: 'Followers', followers_count: 'Followers', followers: 'Followers',
+            following_count: 'Following', following: 'Following',
+            posts_count: 'Posts', tweet_count: 'Posts', video_count: 'Videos',
+            public_repos_count: 'Repos', public_gists_count: 'Gists',
+            heart_count: 'Likes', digg_count: 'Diggs', reputation_count: 'Reputation',
+            created_at: 'Joined', is_verified: 'Verified',
+          };
+          const details = [];
+          for (const [k, v] of Object.entries(ids)) {
+            if (SKIP_ID_KEYS.has(k) || !v || v === 'False' || v === '0' || v === 0) continue;
+            const label = LABEL_MAP[k];
+            if (!label) continue;
+            let display = String(v);
+            if (k === 'created_at') {
+              const d = new Date(v);
+              display = isNaN(d) ? v : d.toISOString().slice(0, 10);
+            }
+            if (k === 'is_verified' && display === 'True') display = 'Yes';
+            details.push({ label, display });
+          }
+
+          // Estimate row height: url line + each detail line
+          const urlLines  = Math.ceil((acc.url.length || 1) / 95) || 1;
+          const rowH = 6 + urlLines * 11 + details.length * 11 + 8;
+          ensureSpace(rowH + 4);
+
+          const ey = doc.y;
+          if (idx % 2 === 0) doc.save().rect(M, ey, W, rowH).fill(C.bg).restore();
+
+          // Index badge
+          doc.save().rect(M, ey + 4, 22, 13).fill(C.green).restore();
           doc.fillColor(C.white).font('Helvetica-Bold').fontSize(7)
              .text(String(idx + 1), M + 1, ey + 6, { width: 20, align: 'center' });
 
-          doc.fillColor(C.text).font('Helvetica-Bold').fontSize(9.5)
-             .text(acc.site, M + 28, ey + 4, { width: 130 });
-          doc.fillColor(C.accent).font('Helvetica').fontSize(8.5)
-             .text(acc.url, M + 165, ey + 4, { width: W - 170, link: acc.url });
-          doc.y = ey + 20;
+          // Site name
+          doc.fillColor(C.text).font('Helvetica-Bold').fontSize(10)
+             .text(acc.site, M + 28, ey + 5, { width: W - 28 });
+
+          let innerY = ey + 5 + 13;
+
+          // URL
+          if (acc.url) {
+            doc.fillColor(C.accent).font('Helvetica').fontSize(8.5)
+               .text(acc.url, M + 28, innerY, { width: W - 28, link: acc.url });
+            innerY += urlLines * 11;
+          }
+
+          // Detail fields
+          for (const { label, display } of details) {
+            doc.fillColor(C.muted).font('Helvetica-Bold').fontSize(8)
+               .text(label + ':', M + 28, innerY, { width: 65 });
+            doc.fillColor(C.text).font('Helvetica').fontSize(8)
+               .text(display, M + 96, innerY, { width: W - 96 });
+            innerY += 11;
+          }
+
+          doc.y = ey + rowH;
+          doc.moveDown(0.1);
         });
         doc.moveDown(0.5);
       }
