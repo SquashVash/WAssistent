@@ -517,40 +517,8 @@ async function buildDossierPDF(target, targetType, statusArr, summaryRows, dataG
 
       doc.y = Math.max(doc.y + 6, photoY + photoSize + 10);
 
-      // Scan metadata bar
-      doc.save().rect(M, doc.y, W, 1).fill(C.rule).restore();
-      doc.y += 6;
-      const metaPairs = [
-        ['Target', target], ['Type', targetType],
-        ['Status', status || '—'], ['Started', started || '—'], ['Ended', ended || '—'],
-        ['SF Events', `${sfTotal}`], ['Accounts', `${maigretAccounts.length}`],
-      ];
-      if (profile.emails.length) metaPairs.push(['Email', profile.emails.join(', ')]);
-      metaPairs.forEach(([k, v]) => {
-        ensureSpace(13);
-        doc.fillColor(C.muted).font('Helvetica-Bold').fontSize(8).text(k + ':', M, doc.y, { width: 72 });
-        doc.fillColor(C.text).font('Helvetica').fontSize(8).text(v, M + 74, doc.y, { width: W - 74 });
-        doc.y += 12;
-      });
-
-      doc.y += 8;
       doc.save().rect(M, doc.y, W, 1).fill(C.rule).restore();
       doc.y += 10;
-
-      // Timeline
-      if (profile.timeline.length) {
-        doc.fillColor(C.navy).font('Helvetica-Bold').fontSize(10).text('Digital Footprint Timeline', M, doc.y);
-        doc.y += 6;
-        for (const { site, date } of profile.timeline) {
-          ensureSpace(13);
-          doc.fillColor(C.muted).font('Helvetica').fontSize(8.5)
-             .text(date.toISOString().slice(0, 10), M, doc.y, { width: 88 });
-          doc.fillColor(C.text).font('Helvetica').fontSize(8.5)
-             .text(site, M + 90, doc.y, { width: W - 90 });
-          doc.y += 12;
-        }
-        doc.y += 6;
-      }
 
       // Social reach
       if (profile.socialStats.length) {
