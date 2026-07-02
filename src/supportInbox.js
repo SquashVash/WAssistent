@@ -43,7 +43,9 @@ async function withSupportClient(fn) {
 }
 
 async function listUnseenUids() {
-  return withSupportClient(client => client.search({ seen: false }));
+  // search() returns sequence numbers unless uid:true is passed — everything downstream
+  // (download/messageFlagsAdd/messageMove) expects real UIDs.
+  return withSupportClient(client => client.search({ seen: false }, { uid: true }));
 }
 
 async function fetchEmail(uid) {

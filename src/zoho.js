@@ -139,7 +139,9 @@ export async function listZohoReceiptCandidates({ start, end } = {}) {
         if (start) searchCriteria.since = start;
         if (end) searchCriteria.before = end;
 
-        let uids = await client.search(Object.keys(searchCriteria).length ? searchCriteria : { all: true });
+        // search() returns sequence numbers unless uid:true is passed — everything downstream
+        // (fetchOne/download) expects real UIDs.
+        let uids = await client.search(Object.keys(searchCriteria).length ? searchCriteria : { all: true }, { uid: true });
         if (!start && !end && uids.length > MAX_UIDS_PER_ACCOUNT) {
           uids = uids.slice(-MAX_UIDS_PER_ACCOUNT);
         }
