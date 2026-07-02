@@ -3,11 +3,11 @@ import { promisify } from 'util';
 import { getSetting, setSetting } from './settings.js';
 import { scheduleDailyBrief, sendDailyBrief } from './brief.js';
 import { handleRemind } from './remind.js';
+import { fetchTicketEmails, setGmailPollInterval, getGmailPollMinutes } from './gmail.js';
 import {
-  fetchTicketEmails, setGmailPollInterval, getGmailPollMinutes,
   fetchReceiptsForMonth, fetchReceiptForSource, matchMonthName,
   getReceiptSources, addReceiptSource, removeReceiptSource, setReceiptSourceEnabled,
-} from './gmail.js';
+} from './receipts.js';
 import { sendMessage, sendFile } from './messaging.js';
 import QRCode from 'qrcode';
 import { lookupFlight } from './flights.js';
