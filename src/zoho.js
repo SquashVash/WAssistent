@@ -20,6 +20,15 @@ function getConfiguredAccounts() {
     .filter(a => a.password);
 }
 
+// imapflow's err.message is always the generic "Command failed" — the real reason from
+// the server (e.g. "Invalid credentials") lives in err.responseText.
+function describeImapError(err) {
+  const parts = [];
+  if (err.authenticationFailed) parts.push('authentication failed');
+  if (err.responseText) parts.push(err.responseText);
+  return parts.length ? parts.join(' - ') : err.message;
+}
+
 async function openClient(account) {
   const client = new ImapFlow({
     host: ZOHO_HOST,
@@ -65,7 +74,7 @@ async function sendZohoAttachments(account, uid, sourceName, subject, from) {
     }
     return sentAny;
   } catch (err) {
-    console.error(`❌ Zoho (${account.email}): failed to send attachment for uid ${uid}:`, err.message);
+    console.error(`❌ Zoho (${account.email}): failed to send attachment for uid ${uid}:`, describeImapError(err));
     return false;
   } finally {
     if (client) await client.logout().catch(() => {});
@@ -95,7 +104,7 @@ export async function testZohoConnections() {
       }
       results.push({ email: acct.email, configured: true, ok: true, messageCount });
     } catch (err) {
-      results.push({ email: acct.email, configured: true, ok: false, error: err.message });
+      results.push({ email: acct.email, configured: true, ok: false, error: describeImapError(err) });
     } finally {
       if (client) await client.logout().catch(() => {});
     }
@@ -145,7 +154,7 @@ export async function listZohoReceiptCandidates({ start, end } = {}) {
         lock.release();
       }
     } catch (err) {
-      console.error(`❌ Zoho (${account.email}): failed to scan inbox:`, err.message);
+      console.error(`❌ Zoho (${account.email}): failed to scan inbox:`, describeImapError(err));
     } finally {
       if (client) await client.logout().catch(() => {});
     }
