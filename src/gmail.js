@@ -232,6 +232,17 @@ export async function fetchTicketEmails(notify = null, collectOnly = false) {
   return poll(notify, collectOnly);
 }
 
+export async function testGmailConnection() {
+  try {
+    const auth = getAuthClient();
+    const gmail = google.gmail({ version: 'v1', auth });
+    const { data } = await gmail.users.getProfile({ userId: 'me' });
+    return { ok: true, detail: `${data.emailAddress} — ${data.messagesTotal} messages` };
+  } catch (err) {
+    return { ok: false, detail: err.message };
+  }
+}
+
 // ---- Receipt candidates (consumed by receipts.js, which also merges in Zoho) ----
 
 async function sendReceiptFromMessage(gmail, sourceName, match) {

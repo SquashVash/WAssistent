@@ -92,6 +92,16 @@ async function sfScanResults(scanId) {
 async function sfStopScan(scanId)   { await axios.get(`${SF_BASE}/stopscan`,   { params: { id: scanId } }); }
 async function sfDeleteScan(scanId) { await axios.get(`${SF_BASE}/scandelete`, { params: { id: scanId } }); }
 
+export async function testSpiderfootConnection() {
+  try {
+    const { data } = await axios.get(`${SF_BASE}/scanlist`, { timeout: 5000 });
+    const count = Array.isArray(data) ? data.length : 0;
+    return { ok: true, detail: `${count} scan(s) on record` };
+  } catch (err) {
+    return { ok: false, detail: err.message };
+  }
+}
+
 // ─── Maigret runner ────────────────────────────────────────────────
 
 // In-memory state: sfScanId → { done, results: [{site, url, category}] }
@@ -207,6 +217,29 @@ function finalizeMaigret(sfScanId, dir, debugOutput = '') {
     state.results = [];
   }
   console.log(`🔍 Maigret done for ${sfScanId}: ${state.results.length} accounts found`);
+}
+
+export async function testMaigretAvailability() {
+  return new Promise((resolve) => {
+    function tryBin(bin, args) {
+      const proc = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+      let output = '';
+      proc.stdout.on('data', d => { output += d.toString(); });
+      proc.stderr.on('data', d => { output += d.toString(); });
+      proc.on('close', (code) => {
+        if (code === 0) resolve({ ok: true, detail: output.trim().split('\n')[0] || 'available' });
+        else resolve({ ok: false, detail: `exit code ${code}` });
+      });
+      proc.on('error', (err) => {
+        if (err.code === 'ENOENT' && bin === 'maigret') {
+          tryBin('python3', ['-m', 'maigret', '--version']);
+        } else {
+          resolve({ ok: false, detail: err.message });
+        }
+      });
+    }
+    tryBin('maigret', ['--version']);
+  });
 }
 
 // ─── Pending scan tracking ─────────────────────────────────────────

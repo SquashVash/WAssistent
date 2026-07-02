@@ -12,6 +12,18 @@ function getAuthClient() {
   return auth;
 }
 
+export async function testCalendarConnection() {
+  try {
+    const auth = getAuthClient();
+    const calendar = google.calendar({ version: 'v3', auth });
+    const calendarId = process.env.GOOGLE_CALENDAR_ID || 'primary';
+    const { data } = await calendar.calendars.get({ calendarId });
+    return { ok: true, detail: data.summary || calendarId };
+  } catch (err) {
+    return { ok: false, detail: err.message };
+  }
+}
+
 export async function getUpcomingEvents(timezone = 'UTC', days = 7) {
   const auth = getAuthClient();
   const calendar = google.calendar({ version: 'v3', auth });

@@ -12,6 +12,17 @@ function getAuthClient() {
   return auth;
 }
 
+export async function testTasksConnection() {
+  try {
+    const auth = getAuthClient();
+    const tasksApi = google.tasks({ version: 'v1', auth });
+    const { data } = await tasksApi.tasklists.list({ maxResults: 10 });
+    return { ok: true, detail: `${(data.items || []).length} list(s)` };
+  } catch (err) {
+    return { ok: false, detail: err.message };
+  }
+}
+
 export async function getTasks(timezone = 'UTC') {
   const auth = getAuthClient();
   const tasksApi = google.tasks({ version: 'v1', auth });

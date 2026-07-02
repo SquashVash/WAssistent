@@ -3,19 +3,21 @@ import { promisify } from 'util';
 import { getSetting, setSetting } from './settings.js';
 import { scheduleDailyBrief, sendDailyBrief } from './brief.js';
 import { handleRemind } from './remind.js';
-import { fetchTicketEmails, setGmailPollInterval, getGmailPollMinutes } from './gmail.js';
+import { fetchTicketEmails, setGmailPollInterval, getGmailPollMinutes, testGmailConnection } from './gmail.js';
 import {
   fetchReceiptsForMonth, fetchReceiptForSource, matchMonthName,
   getReceiptSources, addReceiptSource, removeReceiptSource, setReceiptSourceEnabled,
 } from './receipts.js';
 import { testZohoConnections } from './zoho.js';
+import { testCalendarConnection } from './calendar.js';
+import { testTasksConnection } from './tasks.js';
 import { sendMessage, sendFile } from './messaging.js';
 import QRCode from 'qrcode';
 import { lookupFlight } from './flights.js';
 import { trackFlight, untrackFlight, listTracked, getScheduled, unscheduleFlight, rescheduleFlight, clearAllTracked, clearAllScheduled, setFlightPollInterval, getFlightPollMinutes } from './flightTracker.js';
 import { handleDMSMessage } from './dms.js';
 import { runScan, setScanEnabled, isScanEnabled, setScanTime, getScanTime } from './scan.js';
-import { handleOsintCommand, osintHelp, getOsintPollMinutes } from './osint.js';
+import { handleOsintCommand, osintHelp, getOsintPollMinutes, testMaigretAvailability, testSpiderfootConnection } from './osint.js';
 
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
@@ -42,6 +44,26 @@ function formatReceiptsResult(sent, found, missing, label) {
   if (missing.length) lines.push(`❌ Not found: ${missing.join(', ')}`);
   if (!found.length && !missing.length) lines.push('No enabled receipt sources configured.');
   return lines.join('\n');
+}
+
+const SERVICE_STATUS_CHECKS = {
+  gmail: { label: 'Gmail', run: testGmailConnection },
+  calendar: { label: 'Calendar', run: testCalendarConnection },
+  tasks: { label: 'Tasks', run: testTasksConnection },
+  maigret: { label: 'Maigret', run: testMaigretAvailability },
+  spiderfoot: { label: 'Spiderfoot', run: testSpiderfootConnection },
+};
+
+function formatCheckLine(label, result) {
+  return `${result.ok ? '✅' : '❌'} ${label} — ${result.detail}`;
+}
+
+function formatZohoLines(results) {
+  return results.map(r => {
+    if (!r.configured) return `⚠️ Zoho (${r.email}) — not configured (${r.error})`;
+    if (!r.ok) return `❌ Zoho (${r.email}) — ${r.error}`;
+    return `✅ Zoho (${r.email}) — connected (${r.messageCount} message(s) in INBOX)`;
+  });
 }
 
 export async function handleCommand(msg) {
@@ -206,14 +228,45 @@ export async function handleCommand(msg) {
       : `🧾 No receipt found for *${result.sourceName}*.`;
   }
 
-  if (/^zoho status$/i.test(lower)) {
-    const results = await testZohoConnections();
-    const lines = results.map(r => {
-      if (!r.configured) return `⚠️ ${r.email} — not configured (${r.error})`;
-      if (!r.ok) return `❌ ${r.email} — connection failed: ${r.error}`;
-      return `✅ ${r.email} — connected (${r.messageCount} message(s) in INBOX)`;
-    });
-    return `*📬 Zoho Connection Status*\n${lines.join('\n')}`;
+  const statusMatch = text.match(/^status(?:\s+(.+))?$/i);
+  if (statusMatch) {
+    const service = statusMatch[1]?.trim().toLowerCase();
+
+    if (!service) {
+      const [gmailR, calendarR, tasksR, maigretR, spiderfootR, zohoResults] = await Promise.all([
+        testGmailConnection(),
+        testCalendarConnection(),
+        testTasksConnection(),
+        testMaigretAvailability(),
+        testSpiderfootConnection(),
+        testZohoConnections(),
+      ]);
+
+      const lines = [
+        formatCheckLine('Gmail', gmailR),
+        formatCheckLine('Calendar', calendarR),
+        formatCheckLine('Tasks', tasksR),
+        formatCheckLine('Maigret', maigretR),
+        formatCheckLine('Spiderfoot', spiderfootR),
+        ...formatZohoLines(zohoResults),
+      ];
+
+      return `*⚙️ Service Status*\n${lines.join('\n')}`;
+    }
+
+    if (service === 'zoho') {
+      const results = await testZohoConnections();
+      return `*📬 Zoho Connection Status*\n${formatZohoLines(results).join('\n')}`;
+    }
+
+    const check = SERVICE_STATUS_CHECKS[service];
+    if (!check) {
+      const names = ['zoho', ...Object.keys(SERVICE_STATUS_CHECKS)].join(', ');
+      return `❌ Unknown service. Try: ${names}`;
+    }
+
+    const result = await check.run();
+    return formatCheckLine(check.label, result);
   }
 
   const flightMatch = lower.match(/^flight\s+([a-z0-9]+)$/i);
@@ -403,7 +456,6 @@ export async function handleCommand(msg) {
 • \`receipts sources\` — list adjustable receipt sources
 • \`receipts sources add/remove <name>\` — manage the source list
 • \`receipts sources enable/disable <name>\` — toggle a source on/off
-• \`zoho status\` — check Zoho Mail account connections
 • \`email interval\` — show current check interval
 • \`set email interval 15m\` — set interval (e.g. 30m, 1h)`,
     },
@@ -441,6 +493,8 @@ export async function handleCommand(msg) {
       label: 'Other',
       text: `*⚙️ Other*
 • \`settings\` — show all current settings
+• \`status\` — check connectivity for every service in one message
+• \`status <service>\` — check one service (gmail, calendar, tasks, zoho, maigret, spiderfoot)
 • \`cointoss\` — flip a coin (heads or tails)
 • \`random <max>\` — random number from 1 to max (e.g. \`random 6\`)
 • \`random <min> <max>\` — random number in range (e.g. \`random 10 100\`)
