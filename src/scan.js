@@ -3,6 +3,7 @@ import { getUpcomingEvents } from './calendar.js';
 import { checkCalendarForFlights } from './flightTracker.js';
 import { sendMessage } from './messaging.js';
 import { fetchTicketEmails } from './gmail.js';
+import { checkSupportInboxForScan } from './supportInbox.js';
 
 const DEFAULT_TIME = '00:00';
 
@@ -38,6 +39,14 @@ export async function runScan() {
   } catch (err) {
     console.error('❌ Scan: email scan failed:', err.message);
     actions.push(`❌ Email scan failed: ${err.message}`);
+  }
+
+  try {
+    const supportResults = await checkSupportInboxForScan();
+    actions.push(...supportResults);
+  } catch (err) {
+    console.error('❌ Scan: support inbox check failed:', err.message);
+    actions.push(`❌ Support inbox check failed: ${err.message}`);
   }
 
   const summary = actions.length

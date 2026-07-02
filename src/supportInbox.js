@@ -252,28 +252,48 @@ export async function handleSupportMessage(msg) {
 
 // ---- Background poller ----
 
+// Diffs the current unread UIDs against what's already been notified about, marking
+// the new ones as notified. Shared by the background poller and the `scan` command
+// so they don't both announce the same unread emails.
+async function getNewUnreadSupportEmails() {
+  const uids = await listUnseenUids();
+  const newUids = uids.filter(uid => !notifiedUids.has(uid));
+  newUids.forEach(uid => notifiedUids.add(uid));
+  return { total: uids.length, newCount: newUids.length };
+}
+
 async function checkSupportInbox() {
   const account = getZohoAccount('support');
   if (!account) return;
 
-  let uids;
+  let result;
   try {
-    uids = await listUnseenUids();
+    result = await getNewUnreadSupportEmails();
   } catch (err) {
     console.error('❌ Support inbox check failed:', describeImapError(err));
     return;
   }
 
-  const newUids = uids.filter(uid => !notifiedUids.has(uid));
-  if (!newUids.length) return;
+  if (!result.newCount) return;
 
-  newUids.forEach(uid => notifiedUids.add(uid));
-
-  const suffix = newUids.length < uids.length ? ` (${newUids.length} new)` : '';
+  const suffix = result.newCount < result.total ? ` (${result.newCount} new)` : '';
   await sendMessage(
     process.env.MY_CHAT_ID,
-    `📬 *Support Inbox*\nYou have ${uids.length} unread support email(s)${suffix}.\n\nSend \`support reply\` to go through them.`
+    `📬 *Support Inbox*\nYou have ${result.total} unread support email(s)${suffix}.\n\nSend \`support reply\` to go through them.`
   );
+}
+
+// For the `scan` command digest — throws if the support account isn't configured,
+// same as the other scan checks, so the missing-config error surfaces in the summary.
+export async function checkSupportInboxForScan() {
+  const account = getZohoAccount('support');
+  if (!account) throw new Error('ZOHO_PASSWORD_SUPPORT not set');
+
+  const { total, newCount } = await getNewUnreadSupportEmails();
+  if (!newCount) return [];
+
+  const suffix = newCount < total ? ` (${newCount} new)` : '';
+  return [`📬 ${total} unread support email(s)${suffix} — send \`support reply\` to go through them.`];
 }
 
 export function startSupportInboxWatcher() {
