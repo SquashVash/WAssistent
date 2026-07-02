@@ -120,8 +120,16 @@ async function presentCurrent() {
   }
 
   const uid = flowState.uids[flowState.index];
-  const email = await fetchEmail(uid);
-  const draft = await suggestSupportReply(email);
+
+  let email, draft;
+  try {
+    email = await fetchEmail(uid);
+    draft = await suggestSupportReply(email);
+  } catch (err) {
+    flowState = null;
+    return `❌ Failed to load the next email: ${err.message}\n\nSend \`support reply\` to try again.`;
+  }
+
   flowState.current = { ...email, draft };
 
   const pos = flowState.index + 1;
@@ -158,8 +166,12 @@ async function advanceFlow(action, arg) {
   }
 
   if (action === 'send') {
-    await sendReply(account, current, current.draft);
-    await markSeen(current.uid);
+    try {
+      await sendReply(account, current, current.draft);
+      await markSeen(current.uid);
+    } catch (err) {
+      return `❌ Failed to send reply: ${err.message}\n\nThe draft is unchanged — try \`send\` again, or \`adjust\`/\`edit\` it first.`;
+    }
     flowState.stats.sent++;
     flowState.index++;
     return `✅ Reply sent.\n\n${await presentCurrent()}`;
@@ -167,7 +179,11 @@ async function advanceFlow(action, arg) {
 
   if (action === 'adjust') {
     if (!arg) return '❌ Tell me what to adjust, e.g. `adjust make it more formal`.';
-    current.draft = await suggestSupportReply(current, { previousDraft: current.draft, feedback: arg });
+    try {
+      current.draft = await suggestSupportReply(current, { previousDraft: current.draft, feedback: arg });
+    } catch (err) {
+      return `❌ Failed to generate a revised draft: ${err.message}`;
+    }
     return `💬 *Updated reply:*\n${current.draft}\n\n${OPTIONS_HINT}`;
   }
 
@@ -178,14 +194,22 @@ async function advanceFlow(action, arg) {
   }
 
   if (action === 'delete') {
-    await moveToTrash(current.uid);
+    try {
+      await moveToTrash(current.uid);
+    } catch (err) {
+      return `❌ Failed to delete email: ${err.message}\n\nTry \`delete\` again, or \`ignore\` to move on.`;
+    }
     flowState.stats.deleted++;
     flowState.index++;
     return `🗑️ Email moved to Trash.\n\n${await presentCurrent()}`;
   }
 
   if (action === 'ignore') {
-    await markSeen(current.uid);
+    try {
+      await markSeen(current.uid);
+    } catch (err) {
+      return `❌ Failed to mark email as read: ${err.message}\n\nTry \`ignore\` again.`;
+    }
     flowState.stats.ignored++;
     flowState.index++;
     return `⏭️ Skipped.\n\n${await presentCurrent()}`;
@@ -210,6 +234,17 @@ async function manualCheck() {
 // ---- Chat command entry point ----
 
 export async function handleSupportMessage(msg) {
+  try {
+    return await routeSupportMessage(msg);
+  } catch (err) {
+    // Last-resort safety net: an uncaught throw here would otherwise be swallowed
+    // by webhook.js's outer catch and never reach the user as a reply.
+    console.error('❌ Support inbox command failed:', err.message);
+    return `❌ Something went wrong: ${err.message}`;
+  }
+}
+
+async function routeSupportMessage(msg) {
   const body = typeof msg === 'string' ? msg : (msg?.body ?? '');
   const text = body.trim();
   const lower = text.toLowerCase();
