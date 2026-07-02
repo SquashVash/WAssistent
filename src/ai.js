@@ -36,6 +36,33 @@ export async function getAIReply(chatId, userMessage) {
 
 export { openai };
 
+// Drafts a reply to a support email. Pass `previousDraft` + `feedback` to revise
+// an earlier draft instead of writing a fresh one.
+export async function suggestSupportReply(email, { previousDraft, feedback } = {}) {
+  const messages = [
+    {
+      role: 'system',
+      content: 'You are a helpful, professional customer support agent replying on behalf of the business. Write clear, polite, concise email replies. Output only the reply body text — no subject line, no "Dear ..." salutation unless natural, and sign off simply.',
+    },
+    {
+      role: 'user',
+      content: `From: ${email.from}\nSubject: ${email.subject}\n\n${email.text.slice(0, 4000)}\n\nWrite a reply.`,
+    },
+  ];
+
+  if (previousDraft && feedback) {
+    messages.push({ role: 'assistant', content: previousDraft });
+    messages.push({ role: 'user', content: `Revise the reply based on this feedback: ${feedback}` });
+  }
+
+  const response = await openai.chat.completions.create({
+    model: 'gpt-4o-mini',
+    messages,
+  });
+
+  return response.choices[0].message.content.trim();
+}
+
 export async function extractFlightInfo(emailText) {
   const response = await openai.chat.completions.create({
     model: 'gpt-4o-mini',

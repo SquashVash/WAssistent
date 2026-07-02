@@ -4,11 +4,11 @@ import { sendDocument } from './messaging.js';
 
 const ZOHO_HOST = process.env.ZOHO_IMAP_HOST || 'imap.zoho.com';
 
-// Zoho accounts scanned for receipt PDFs. Passwords are Zoho "app-specific
+// Zoho accounts accessible to the bot. Passwords are Zoho "app-specific
 // passwords" (Zoho Mail Settings -> Security -> App Passwords), read from env.
 const ZOHO_ACCOUNTS = [
-  { email: 'shay@kovets.com', passwordEnv: 'ZOHO_PASSWORD_SHAY' },
-  { email: 'support@kovets.com', passwordEnv: 'ZOHO_PASSWORD_SUPPORT' },
+  { key: 'shay', email: 'shay@kovets.com', passwordEnv: 'ZOHO_PASSWORD_SHAY' },
+  { key: 'support', email: 'support@kovets.com', passwordEnv: 'ZOHO_PASSWORD_SUPPORT' },
 ];
 
 // Cap how many recent messages we inspect per account for an unbounded (all-time) search.
@@ -20,16 +20,26 @@ function getConfiguredAccounts() {
     .filter(a => a.password);
 }
 
+// Looks up a single configured account by key (e.g. 'support'). Returns null if
+// the account is unknown or its password env var isn't set.
+export function getZohoAccount(key) {
+  const acct = ZOHO_ACCOUNTS.find(a => a.key === key);
+  if (!acct) return null;
+  const password = process.env[acct.passwordEnv];
+  if (!password) return null;
+  return { email: acct.email, password };
+}
+
 // imapflow's err.message is always the generic "Command failed" — the real reason from
 // the server (e.g. "Invalid credentials") lives in err.responseText.
-function describeImapError(err) {
+export function describeImapError(err) {
   const parts = [];
   if (err.authenticationFailed) parts.push('authentication failed');
   if (err.responseText) parts.push(err.responseText);
   return parts.length ? parts.join(' - ') : err.message;
 }
 
-async function openClient(account) {
+export async function openZohoClient(account) {
   const client = new ImapFlow({
     host: ZOHO_HOST,
     port: 993,
@@ -54,7 +64,7 @@ function hasPdfAttachment(node, isRoot = true) {
 async function sendZohoAttachments(account, uid, sourceName, subject, from) {
   let client;
   try {
-    client = await openClient(account);
+    client = await openZohoClient(account);
     const lock = await client.getMailboxLock('INBOX');
     let sentAny = false;
     try {
@@ -94,7 +104,7 @@ export async function testZohoConnections() {
 
     let client;
     try {
-      client = await openClient({ email: acct.email, password });
+      client = await openZohoClient({ email: acct.email, password });
       const lock = await client.getMailboxLock('INBOX');
       let messageCount;
       try {
@@ -122,7 +132,7 @@ export async function listZohoReceiptCandidates({ start, end } = {}) {
   for (const account of accounts) {
     let client;
     try {
-      client = await openClient(account);
+      client = await openZohoClient(account);
       const lock = await client.getMailboxLock('INBOX');
       try {
         const searchCriteria = {};

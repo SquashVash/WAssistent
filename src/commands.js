@@ -11,6 +11,7 @@ import {
 import { testZohoConnections } from './zoho.js';
 import { testCalendarConnection } from './calendar.js';
 import { testTasksConnection } from './tasks.js';
+import { handleSupportMessage, getSupportPollMinutes } from './supportInbox.js';
 import { sendMessage, sendFile } from './messaging.js';
 import QRCode from 'qrcode';
 import { lookupFlight } from './flights.js';
@@ -72,6 +73,10 @@ export async function handleCommand(msg) {
   // DMS must run first — it intercepts all messages during setup and challenge responses
   const dmsResult = await handleDMSMessage(msg);
   if (dmsResult !== false) return dmsResult;
+
+  // Support reply flow also intercepts all messages while active
+  const supportResult = await handleSupportMessage(msg);
+  if (supportResult !== false) return supportResult;
 
   const remindReply = handleRemind(body.trim());
   if (remindReply !== null) return remindReply;
@@ -399,6 +404,9 @@ export async function handleCommand(msg) {
 *Emails*
 • Check interval: every ${emailInterval} min
 
+*Support Inbox*
+• Check interval: every ${getSupportPollMinutes()} min
+
 *Flights*
 • Poll interval: every ${flightInterval} min
 
@@ -458,6 +466,23 @@ export async function handleCommand(msg) {
 • \`receipts sources enable/disable <name>\` — toggle a source on/off
 • \`email interval\` — show current check interval
 • \`set email interval 15m\` — set interval (e.g. 30m, 1h)`,
+    },
+    support: {
+      emoji: '📬',
+      label: 'Support Inbox',
+      text: `*📬 Support Inbox*
+• \`support check\` — check now for unread support emails
+• \`support reply\` — go through unread support emails one by one
+• \`support interval\` — show current auto-check interval
+• \`set support interval 15m\` — set auto-check interval (e.g. 30m, 1h)
+
+*During a reply flow:*
+• \`send\` — send the suggested reply
+• \`adjust <feedback>\` — ask the AI to revise the draft
+• \`edit <text>\` — replace the draft with your own exact text
+• \`delete\` — move the email to Trash
+• \`ignore\` — mark it read and skip
+• \`cancel\` — stop the flow`,
     },
     dms: {
       emoji: '💀',
