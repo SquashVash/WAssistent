@@ -3,7 +3,11 @@ import { promisify } from 'util';
 import { getSetting, setSetting } from './settings.js';
 import { scheduleDailyBrief, sendDailyBrief } from './brief.js';
 import { handleRemind } from './remind.js';
-import { fetchTicketEmails, setGmailPollInterval, getGmailPollMinutes, fetchMonthlyReceipts } from './gmail.js';
+import {
+  fetchTicketEmails, setGmailPollInterval, getGmailPollMinutes,
+  fetchReceiptsForMonth, fetchReceiptForSource, matchMonthName,
+  getReceiptSources, addReceiptSource, removeReceiptSource, setReceiptSourceEnabled,
+} from './gmail.js';
 import { sendMessage, sendFile } from './messaging.js';
 import QRCode from 'qrcode';
 import { lookupFlight } from './flights.js';
@@ -14,6 +18,30 @@ import { handleOsintCommand, osintHelp, getOsintPollMinutes } from './osint.js';
 
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
+
+function ordinal(n) {
+  const suffixes = ['th', 'st', 'nd', 'rd'];
+  const v = n % 100;
+  return `${n}${suffixes[(v - 20) % 10] || suffixes[v] || suffixes[0]}`;
+}
+
+function formatReceiptSourcesList() {
+  const sources = getReceiptSources();
+  const lines = sources.map(s => {
+    const box = s.enabled ? '[v]' : '[ ]';
+    const day = s.day ? ` - on the ${ordinal(s.day)}` : '';
+    return `${box} ${s.name}${day}`;
+  });
+  return `*🧾 Receipt Sources*\n${lines.join('\n')}\n\nManage: \`receipts sources add <name>\`, \`remove <name>\`, \`enable <name>\`, \`disable <name>\``;
+}
+
+function formatReceiptsResult(sent, found, missing, label) {
+  const lines = [`🧾 *Receipts — ${label}*`];
+  if (found.length) lines.push(`✅ Sent: ${found.join(', ')}`);
+  if (missing.length) lines.push(`❌ Not found: ${missing.join(', ')}`);
+  if (!found.length && !missing.length) lines.push('No enabled receipt sources configured.');
+  return lines.join('\n');
+}
 
 export async function handleCommand(msg) {
   const body = typeof msg === 'string' ? msg : (msg?.body ?? '');
@@ -113,11 +141,68 @@ export async function handleCommand(msg) {
     return null;
   }
 
-  if (/^receipts?$/i.test(lower)) {
-    const sent = await fetchMonthlyReceipts();
-    return sent > 0
-      ? `🧾 Done — sent ${sent} receipt PDF(s) from this month.`
-      : `🧾 No receipt PDFs found for this month.`;
+  const receiptSourcesMatch = text.match(/^receipts?\s+sources(?:\s+(.+))?$/i);
+  if (receiptSourcesMatch) {
+    const rest = receiptSourcesMatch[1]?.trim();
+    if (!rest) return formatReceiptSourcesList();
+
+    const addMatch = rest.match(/^add\s+(.+)$/i);
+    if (addMatch) {
+      const name = addMatch[1].trim();
+      const added = addReceiptSource(name);
+      return added
+        ? `✅ Added *${name}* to receipt sources (enabled).`
+        : `⚠️ *${name}* is already in the receipt sources list.`;
+    }
+
+    const removeMatch = rest.match(/^(?:remove|delete)\s+(.+)$/i);
+    if (removeMatch) {
+      const name = removeMatch[1].trim();
+      const removed = removeReceiptSource(name);
+      return removed
+        ? `✅ Removed *${name}* from receipt sources.`
+        : `⚠️ Couldn't find *${name}* in the receipt sources list.`;
+    }
+
+    const enableMatch = rest.match(/^(?:enable|on)\s+(.+)$/i);
+    if (enableMatch) {
+      const name = enableMatch[1].trim();
+      const ok = setReceiptSourceEnabled(name, true);
+      return ok
+        ? `✅ *${name}* enabled for receipts.`
+        : `⚠️ Couldn't find *${name}* in the receipt sources list.`;
+    }
+
+    const disableMatch = rest.match(/^(?:disable|off)\s+(.+)$/i);
+    if (disableMatch) {
+      const name = disableMatch[1].trim();
+      const ok = setReceiptSourceEnabled(name, false);
+      return ok
+        ? `✅ *${name}* disabled for receipts.`
+        : `⚠️ Couldn't find *${name}* in the receipt sources list.`;
+    }
+
+    return `❌ Unknown sources command. Try: \`receipts sources\`, \`receipts sources add <name>\`, \`receipts sources remove <name>\`, \`receipts sources enable <name>\`, \`receipts sources disable <name>\`.`;
+  }
+
+  const receiptsMatch = text.match(/^receipts?(?:\s+(.+))?$/i);
+  if (receiptsMatch) {
+    const arg = receiptsMatch[1]?.trim();
+
+    if (!arg) {
+      const { sent, found, missing, label } = await fetchReceiptsForMonth();
+      return formatReceiptsResult(sent, found, missing, label);
+    }
+
+    if (!arg.includes(' ') && matchMonthName(arg) !== -1) {
+      const { sent, found, missing, label } = await fetchReceiptsForMonth(arg);
+      return formatReceiptsResult(sent, found, missing, label);
+    }
+
+    const result = await fetchReceiptForSource(arg);
+    return result.found
+      ? `🧾 Sent the latest receipt from *${result.sourceName}*.`
+      : `🧾 No receipt found for *${result.sourceName}*.`;
   }
 
   const flightMatch = lower.match(/^flight\s+([a-z0-9]+)$/i);
@@ -301,7 +386,12 @@ export async function handleCommand(msg) {
       label: 'Emails',
       text: `*📧 Emails*
 • \`fetch emails\` — check Gmail now for ticket PDFs and flight bookings
-• \`receipts\` — send all receipt PDFs from this month
+• \`receipts\` — send the latest receipt from each enabled source this month
+• \`receipts <month>\` — send receipts for a specific month (e.g. \`receipts july\`)
+• \`receipts <source>\` — send the latest receipt from one source (e.g. \`receipts google cloud\`)
+• \`receipts sources\` — list adjustable receipt sources
+• \`receipts sources add/remove <name>\` — manage the source list
+• \`receipts sources enable/disable <name>\` — toggle a source on/off
 • \`email interval\` — show current check interval
 • \`set email interval 15m\` — set interval (e.g. 30m, 1h)`,
     },
