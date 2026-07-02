@@ -8,6 +8,7 @@ import {
   fetchReceiptsForMonth, fetchReceiptForSource, matchMonthName,
   getReceiptSources, addReceiptSource, removeReceiptSource, setReceiptSourceEnabled,
 } from './receipts.js';
+import { testZohoConnections } from './zoho.js';
 import { sendMessage, sendFile } from './messaging.js';
 import QRCode from 'qrcode';
 import { lookupFlight } from './flights.js';
@@ -205,6 +206,16 @@ export async function handleCommand(msg) {
       : `🧾 No receipt found for *${result.sourceName}*.`;
   }
 
+  if (/^zoho status$/i.test(lower)) {
+    const results = await testZohoConnections();
+    const lines = results.map(r => {
+      if (!r.configured) return `⚠️ ${r.email} — not configured (${r.error})`;
+      if (!r.ok) return `❌ ${r.email} — connection failed: ${r.error}`;
+      return `✅ ${r.email} — connected (${r.messageCount} message(s) in INBOX)`;
+    });
+    return `*📬 Zoho Connection Status*\n${lines.join('\n')}`;
+  }
+
   const flightMatch = lower.match(/^flight\s+([a-z0-9]+)$/i);
   if (flightMatch) {
     return await lookupFlight(flightMatch[1]);
@@ -392,6 +403,7 @@ export async function handleCommand(msg) {
 • \`receipts sources\` — list adjustable receipt sources
 • \`receipts sources add/remove <name>\` — manage the source list
 • \`receipts sources enable/disable <name>\` — toggle a source on/off
+• \`zoho status\` — check Zoho Mail account connections
 • \`email interval\` — show current check interval
 • \`set email interval 15m\` — set interval (e.g. 30m, 1h)`,
     },

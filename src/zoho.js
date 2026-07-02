@@ -72,6 +72,38 @@ async function sendZohoAttachments(account, uid, sourceName, subject, from) {
   }
 }
 
+// Connects to every configured Zoho account and reports whether login + INBOX access works.
+export async function testZohoConnections() {
+  const results = [];
+
+  for (const acct of ZOHO_ACCOUNTS) {
+    const password = process.env[acct.passwordEnv];
+    if (!password) {
+      results.push({ email: acct.email, configured: false, ok: false, error: `${acct.passwordEnv} not set` });
+      continue;
+    }
+
+    let client;
+    try {
+      client = await openClient({ email: acct.email, password });
+      const lock = await client.getMailboxLock('INBOX');
+      let messageCount;
+      try {
+        messageCount = client.mailbox.exists;
+      } finally {
+        lock.release();
+      }
+      results.push({ email: acct.email, configured: true, ok: true, messageCount });
+    } catch (err) {
+      results.push({ email: acct.email, configured: true, ok: false, error: err.message });
+    } finally {
+      if (client) await client.logout().catch(() => {});
+    }
+  }
+
+  return results;
+}
+
 // Lists PDF-attachment emails across configured Zoho accounts as generic receipt candidates.
 // `start`/`end` are Date objects (end exclusive); either may be omitted for an all-time search.
 export async function listZohoReceiptCandidates({ start, end } = {}) {
