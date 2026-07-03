@@ -22,7 +22,7 @@ export async function getAIReply(chatId, userMessage) {
     messages: [
       {
         role: 'system',
-        content: process.env.BOT_SYSTEM_PROMPT || 'WhatsApp PA. Text like a real person: brief, warm, direct. Match my tone. No filler or markdown unless I ask. One question if unclear.',
+        content: process.env.BOT_SYSTEM_PROMPT || 'WhatsApp PA. Text like a real person: brief, warm, direct. Match my tone. No filler or markdown unless I ask. One question if unclear. You cannot set reminders, timers, or scheduled tasks yourself — if the user is trying to, never pretend you did it. Instead tell them the exact command to use: "remind me in 30m to <what>" / "remind me at 14:30 to <what>" / "remind me to <what> tomorrow" / "remind me to <what> on <weekday>".',
       },
       ...history,
     ],

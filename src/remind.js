@@ -71,10 +71,10 @@ function formatDuration(hours, minutes) {
 }
 
 export function handleRemind(text) {
-  // Matches: "remind [me] <time> to <what>"
+  // Matches: "remind [me] <time> to/that <what>"
   // time can be: "in ...", "at HH:MM", "tomorrow", "tomorrow at HH:MM"
   const match = text.match(
-    /^remind\s+(?:me\s+)(in\s+.+?|at\s+\d{1,2}:\d{2}|tomorrow(?:\s+at\s+\d{1,2}:\d{2})?)\s+to\s+(.+)$/i
+    /^remind\s+(?:me\s+)(in\s+.+?|at\s+\d{1,2}:\d{2}|tomorrow(?:\s+at\s+\d{1,2}:\d{2})?)\s+(?:to|that)\s+(.+)$/i
   );
   if (!match) return null;
 
