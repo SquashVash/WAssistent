@@ -63,6 +63,44 @@ export async function suggestSupportReply(email, { previousDraft, feedback } = {
   return response.choices[0].message.content.trim();
 }
 
+// Writes one short, warm intro sentence for the daily brief, based on the already-built brief body.
+export async function generateBriefIntro(briefBody, todayLabel) {
+  const response = await openai.chat.completions.create({
+    model: 'gpt-4o-mini',
+    messages: [
+      {
+        role: 'system',
+        content: 'Write one short, warm sentence summarizing the day ahead, based on the brief below. Sound like a real person, not a template. No markdown, no greeting, no sign-off — just the sentence.',
+      },
+      {
+        role: 'user',
+        content: `Today is ${todayLabel}.\n\n${briefBody || 'Nothing scheduled today.'}`,
+      },
+    ],
+  });
+
+  return response.choices[0].message.content.trim();
+}
+
+// Turns a plain reminder text into a short, casual WhatsApp-style nudge.
+export async function humanizeReminder(text) {
+  const response = await openai.chat.completions.create({
+    model: 'gpt-4o-mini',
+    messages: [
+      {
+        role: 'system',
+        content: 'Write a short, warm, casual reminder message, like texting a friend. One or two sentences, no markdown, no greeting.',
+      },
+      {
+        role: 'user',
+        content: `Remind me to: ${text}`,
+      },
+    ],
+  });
+
+  return response.choices[0].message.content.trim();
+}
+
 export async function extractFlightInfo(emailText) {
   const response = await openai.chat.completions.create({
     model: 'gpt-4o-mini',

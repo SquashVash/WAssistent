@@ -55,9 +55,7 @@ export async function getTasks(timezone = 'UTC') {
   return allTasks;
 }
 
-export function formatTasksForPrompt(tasks, timezone = 'UTC') {
-  if (!tasks.length) return 'No tasks due today.';
-
+export function categorizeTasks(tasks, timezone = 'UTC') {
   const overdue = [];
   const dueToday = [];
   const noDueDate = [];
@@ -75,24 +73,5 @@ export function formatTasksForPrompt(tasks, timezone = 'UTC') {
     }
   }
 
-  const lines = [];
-
-  if (overdue.length) {
-    lines.push('Overdue:');
-    for (const t of overdue) lines.push(`  • ${t.title}${t.listTitle !== 'My Tasks' ? ` (${t.listTitle})` : ''}`);
-  }
-
-  if (dueToday.length) {
-    if (lines.length) lines.push('');
-    lines.push('Due today:');
-    for (const t of dueToday) lines.push(`  • ${t.title}${t.listTitle !== 'My Tasks' ? ` (${t.listTitle})` : ''}`);
-  }
-
-  if (noDueDate.length) {
-    if (lines.length) lines.push('');
-    lines.push('No due date:');
-    for (const t of noDueDate) lines.push(`  • ${t.title}${t.listTitle !== 'My Tasks' ? ` (${t.listTitle})` : ''}`);
-  }
-
-  return lines.join('\n');
+  return { overdue, dueToday, noDueDate };
 }

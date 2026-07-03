@@ -7,6 +7,7 @@ import { startFlightTracker, restoreScheduledTrackings } from './src/flightTrack
 import { initDMS } from './src/dms.js';
 import { scheduleAutoScan } from './src/scan.js';
 import { initOsintPollers } from './src/osint.js';
+import { initReminders } from './src/reminders.js';
 
 const PORT = process.env.WEBHOOK_PORT || process.env.PORT || 3000;
 
@@ -19,3 +20,4 @@ restoreScheduledTrackings();
 initDMS();
 scheduleAutoScan();
 initOsintPollers();
+initReminders();

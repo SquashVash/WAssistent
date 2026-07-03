@@ -1,8 +1,9 @@
-import { openai } from './ai.js';
+import { generateBriefIntro } from './ai.js';
 import { sendMessage } from './messaging.js';
 import { getSetting } from './settings.js';
-import { getTodaysEvents, formatEventsForPrompt } from './calendar.js';
-import { getTasks, formatTasksForPrompt } from './tasks.js';
+import { getUpcomingEvents } from './calendar.js';
+import { getTasks, categorizeTasks } from './tasks.js';
+import { getRemindersForToday } from './reminders.js';
 
 let briefTimeout = null;
 
@@ -11,6 +12,87 @@ function getTodayLabel(tz) {
   const dayName = now.toLocaleDateString('en-US', { timeZone: tz, weekday: 'long' });
   const date = now.toLocaleDateString('en-US', { timeZone: tz, month: 'long', day: 'numeric' });
   return `${dayName}, ${date}`;
+}
+
+function dateStrInTz(date, tz) {
+  return date.toLocaleDateString('en-CA', { timeZone: tz });
+}
+
+// Returns [startDateStr, endDateStrExclusive] for an event in tz-local calendar dates,
+// so multi-day all-day events (e.g. a hotel stay) are matched on every day they cover.
+function eventDateRange(event, tz) {
+  if (event.start?.date) {
+    return [event.start.date, event.end?.date || event.start.date];
+  }
+  if (event.start?.dateTime) {
+    const d = dateStrInTz(new Date(event.start.dateTime), tz);
+    return [d, addOneDay(d)];
+  }
+  return [null, null];
+}
+
+function addOneDay(dateStr) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + 1);
+  return dt.toISOString().slice(0, 10);
+}
+
+function eventCoversDate(event, dateStr, tz) {
+  const [start, end] = eventDateRange(event, tz);
+  if (!start) return false;
+  return start <= dateStr && dateStr < end;
+}
+
+function isBirthdayEvent(event) {
+  return /birthday/i.test(event.summary || '');
+}
+
+function extractBirthdayName(title) {
+  let name = title.replace(/^birthday:?\s*/i, '');
+  name = name.replace(/(?:'s)?\s*birthday\s*$/i, '').trim();
+  return name || title;
+}
+
+function formatEventBullet(event, tz) {
+  const summary = event.summary || '(No title)';
+  if (event.start?.date) return `Staying at ${summary}.`;
+  const time = new Date(event.start.dateTime).toLocaleTimeString('en-US', {
+    timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false,
+  });
+  return `${summary} at ${time}.`;
+}
+
+function buildBirthdaysSection(events, todayStr, tomorrowStr, tz) {
+  const lines = [];
+  for (const event of events) {
+    if (!isBirthdayEvent(event)) continue;
+    const name = extractBirthdayName(event.summary || '');
+    if (eventCoversDate(event, todayStr, tz)) lines.push(`It is ${name} birthday today`);
+    else if (eventCoversDate(event, tomorrowStr, tz)) lines.push(`don't forget it's ${name}'s birthday tomorrow`);
+  }
+  return lines;
+}
+
+function buildScheduleSection(events, todayStr, tz) {
+  const todays = events.filter(e => !isBirthdayEvent(e) && eventCoversDate(e, todayStr, tz));
+  const allDay = todays.filter(e => e.start?.date);
+  const timed = todays.filter(e => e.start?.dateTime)
+    .sort((a, b) => new Date(a.start.dateTime) - new Date(b.start.dateTime));
+  return [...allDay, ...timed].map(e => formatEventBullet(e, tz));
+}
+
+function buildTasksSection(tasks, tz) {
+  const { overdue, dueToday } = categorizeTasks(tasks, tz);
+  const lines = [];
+  for (const t of overdue) lines.push(`Overdue: ${t.title}`);
+  for (const t of dueToday) lines.push(`Due today: ${t.title}`);
+  return lines;
+}
+
+function renderSection(title, emoji, lines) {
+  if (!lines.length) return '';
+  return `*${emoji} ${title}*\n${lines.map(l => `- ${l}`).join('\n')}`;
 }
 
 export async function sendDailyBrief() {
@@ -23,65 +105,57 @@ export async function sendDailyBrief() {
   }
 
   const todayLabel = getTodayLabel(tz);
+  const now = new Date();
+  const todayStr = dateStrInTz(now, tz);
+  const tomorrowStr = dateStrInTz(new Date(now.getTime() + 24 * 60 * 60 * 1000), tz);
 
-  let calendarContext = 'No calendar events found for today.';
+  let events = [];
   try {
-    const events = await getTodaysEvents(tz);
-    calendarContext = formatEventsForPrompt(events, tz);
+    events = await getUpcomingEvents(tz, 2);
     console.log(`📆 Fetched ${events.length} calendar event(s)`);
   } catch (err) {
     console.warn('⚠️ Could not fetch calendar events:', err.message);
   }
 
-  let tasksContext = '';
+  let tasks = [];
   try {
-    const tasks = await getTasks(tz);
-    tasksContext = formatTasksForPrompt(tasks, tz);
+    tasks = await getTasks(tz);
     console.log(`✅ Fetched ${tasks.length} task(s)`);
   } catch (err) {
     console.warn('⚠️ Could not fetch tasks:', err.message);
   }
 
-  const systemPrompt = `You are my personal assistant creating a concise WhatsApp daily brief.
+  let reminders = [];
+  try {
+    reminders = getRemindersForToday();
+  } catch (err) {
+    console.warn('⚠️ Could not fetch reminders:', err.message);
+  }
 
-First line must be exactly:
-*Daily Brief - ${todayLabel}*
+  const sections = [
+    renderSection('Birthdays', '🎂', buildBirthdaysSection(events, todayStr, tomorrowStr, tz)),
+    renderSection('Schedule', '📅', buildScheduleSection(events, todayStr, tz)),
+    renderSection('Tasks', '✅', buildTasksSection(tasks, tz)),
+    renderSection('Reminders', '⏰', reminders),
+  ].filter(Boolean);
 
-Start with one short, warm sentence summarizing the day ahead.
+  const briefBody = sections.join('\n\n');
 
-Make it easy to scan with clear categories and short bullets. Only include useful sections.
+  let intro = '';
+  try {
+    intro = await generateBriefIntro(briefBody, todayLabel);
+  } catch (err) {
+    console.warn('⚠️ Could not generate brief intro:', err.message);
+  }
 
-Possible sections:
-*🎂 Birthdays* — today's birthdays, and tomorrow's only if useful
-*📅 Schedule* — summarize the day in useful points, not every raw event
-*✅ Tasks* — overdue tasks first, then due today, priority tasks, and quick wins
-*🧳 Travel / Transitions* — travel, check-in/out, or stay changes
+  const parts = [`*Daily Brief - ${todayLabel}*`];
+  if (intro) parts.push(intro);
+  if (briefBody) parts.push(briefBody);
+  parts.push('Enjoy your day!');
 
-Rules:
-* Keep it short, human, and phone-friendly
-* Skip empty or repetitive sections
-* Summarize calendar events instead of copying them
-* Collapse related events into one useful point
-* If I am staying in more than once place its a travel day, say the actual transition instead of listing separate stay/check-in/check-out events
-* Do not dump every event/task
-* Do not invent context
-* Prioritize birthdays, overdue tasks, today's tasks, important events, then quick wins`;
-
-  const userPrompt = `Today is ${todayLabel}.
-
-Calendar events:
-${calendarContext}${tasksContext ? `\n\nTasks:\n${tasksContext}` : ''}`;
+  const brief = parts.join('\n\n');
 
   try {
-    const response = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
-      ],
-    });
-
-    const brief = response.choices[0].message.content;
     await sendMessage(chatId, brief);
     console.log(`📅 Daily brief sent to ${chatId}`);
   } catch (err) {
