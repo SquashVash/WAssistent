@@ -2,7 +2,6 @@ import { exec, execFile } from 'child_process';
 import { promisify } from 'util';
 import { getSetting, setSetting } from './settings.js';
 import { scheduleDailyBrief, sendDailyBrief } from './brief.js';
-import { handleRemind } from './remind.js';
 import { handleReminderCommand } from './reminders.js';
 import { fetchTicketEmails, setGmailPollInterval, getGmailPollMinutes, testGmailConnection } from './gmail.js';
 import {
@@ -78,9 +77,6 @@ export async function handleCommand(msg) {
   // Support reply flow also intercepts all messages while active
   const supportResult = await handleSupportMessage(msg);
   if (supportResult !== false) return supportResult;
-
-  const remindReply = handleRemind(body.trim());
-  if (remindReply !== null) return remindReply;
 
   const reminderReply = handleReminderCommand(body.trim());
   if (reminderReply !== null) return reminderReply;
@@ -435,20 +431,19 @@ export async function handleCommand(msg) {
     reminders: {
       emoji: '⏰',
       label: 'Reminders',
-      text: `*⏰ Quick Reminders* (one-off, fires once)
+      text: `*⏰ Reminders*
+Persisted, shown in today's daily brief until they fire, and sent as an AI-written nudge at the scheduled time.
 • \`remind me in 30m to <what>\`
 • \`remind me in 2h to <what>\`
 • \`remind me in 1h30m to <what>\`
 • \`remind me at 14:30 to <what>\`
 • \`remind me tomorrow to <what>\`
 • \`remind me tomorrow at 9:00 to <what>\`
-
-*⏰ Scheduled Reminders* (persisted, shown in the daily brief, sent as an AI-written nudge at the time)
 • \`remind me to <what> today\`
 • \`remind me to <what> tomorrow\`
 • \`remind me to <what> tomorrow at 18:30\`
 • \`remind me to <what> on tuesday\`
-• \`reminders\` — list pending scheduled reminders
+• \`reminders\` — list pending reminders
 • \`cancel reminder <n>\` — cancel one by its list number`,
     },
     flights: {

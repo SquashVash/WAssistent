@@ -75,30 +75,102 @@ function describeDueDate(dueDate, tz) {
   return dueDate;
 }
 
-// Matches: remind me to <what> today|tomorrow|on <weekday> [at HH:MM]
+// "in Xh", "in Xm", "in XhYm", "in X hours", "in X minutes"
+function parseDurationMs(phrase) {
+  const m = phrase.match(/^in\s+(?:(\d+)\s*h(?:ours?)?)?\s*(?:(\d+)\s*m(?:in(?:utes?)?)?)?$/i);
+  if (!m || (!m[1] && !m[2])) return null;
+  const hours = parseInt(m[1] || '0', 10);
+  const minutes = parseInt(m[2] || '0', 10);
+  const ms = (hours * 60 + minutes) * 60 * 1000;
+  return ms > 0 ? ms : null;
+}
+
+function resolveFromDuration(ms, tz) {
+  const target = new Date(Date.now() + ms);
+  return {
+    dueDate: target.toLocaleDateString('en-CA', { timeZone: tz }),
+    dueTime: target.toLocaleTimeString('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false }),
+  };
+}
+
+// "at HH:MM" always means the next occurrence of that time (today if still ahead, else tomorrow).
+function resolveNextOccurrence(hh, mm, tz) {
+  const today = todayDateStr(tz);
+  const p = getNowParts(tz);
+  const nowMinutes = p.hour * 60 + p.minute;
+  const dueDate = (hh * 60 + mm) > nowMinutes ? today : addDaysToDateStr(today, 1);
+  return { dueDate, dueTime: `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}` };
+}
+
+// Resolves the old-style leading time phrase: "in ...", "at HH:MM", "tomorrow[ at HH:MM]".
+function resolveOldStyleTimePhrase(phrase, tz) {
+  const p = phrase.trim();
+
+  const durationMs = parseDurationMs(p);
+  if (durationMs) return resolveFromDuration(durationMs, tz);
+
+  const atMatch = p.match(/^at\s+(\d{1,2}):(\d{2})$/i);
+  if (atMatch) {
+    const hh = parseInt(atMatch[1], 10);
+    const mm = parseInt(atMatch[2], 10);
+    if (hh > 23 || mm > 59) return null;
+    return resolveNextOccurrence(hh, mm, tz);
+  }
+
+  const tomorrowMatch = p.match(/^tomorrow(?:\s+at\s+(\d{1,2}):(\d{2}))?$/i);
+  if (tomorrowMatch) {
+    const dueDate = addDaysToDateStr(todayDateStr(tz), 1);
+    let dueTime = DEFAULT_TIME;
+    if (tomorrowMatch[1] !== undefined) {
+      const hh = parseInt(tomorrowMatch[1], 10);
+      const mm = parseInt(tomorrowMatch[2], 10);
+      if (hh > 23 || mm > 59) return null;
+      dueTime = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+    }
+    return { dueDate, dueTime };
+  }
+
+  return null;
+}
+
+function addReminder(what, dueDate, dueTime, tz) {
+  const reminders = getReminders();
+  reminders.push({ id: Date.now().toString(36), text: what, dueDate, dueTime });
+  saveReminders(reminders);
+  return `✅ I'll remind you to "${what}" ${describeDueDate(dueDate, tz)} at ${dueTime}.`;
+}
+
+// Matches two phrasings:
+//   "remind me to <what> today|tomorrow|on <weekday> [at HH:MM]"
+//   "remind me in .../at HH:MM/tomorrow[ at HH:MM] to|that <what>"
 export function handleReminderCommand(text) {
   const trimmed = text.trim();
   const tz = getTz();
 
-  const addMatch = trimmed.match(/^remind\s+me\s+to\s+(.+?)\s+(today|tomorrow|on\s+\w+)(?:\s+at\s+(\d{1,2}):(\d{2}))?$/i);
-  if (addMatch) {
-    const what = addMatch[1].trim();
-    const dueDate = resolveDueDate(addMatch[2], tz);
+  const newStyleMatch = trimmed.match(/^remind\s+me\s+to\s+(.+?)\s+(today|tomorrow|on\s+\w+)(?:\s+at\s+(\d{1,2}):(\d{2}))?$/i);
+  if (newStyleMatch) {
+    const what = newStyleMatch[1].trim();
+    const dueDate = resolveDueDate(newStyleMatch[2], tz);
     if (!dueDate) return null;
 
     let dueTime = DEFAULT_TIME;
-    if (addMatch[3] !== undefined) {
-      const hh = parseInt(addMatch[3], 10);
-      const mm = parseInt(addMatch[4], 10);
+    if (newStyleMatch[3] !== undefined) {
+      const hh = parseInt(newStyleMatch[3], 10);
+      const mm = parseInt(newStyleMatch[4], 10);
       if (hh > 23 || mm > 59) return '❌ Invalid time. Use HH:MM (24h format).';
       dueTime = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
     }
 
-    const reminders = getReminders();
-    reminders.push({ id: Date.now().toString(36), text: what, dueDate, dueTime });
-    saveReminders(reminders);
+    return addReminder(what, dueDate, dueTime, tz);
+  }
 
-    return `✅ I'll remind you to "${what}" ${describeDueDate(dueDate, tz)} at ${dueTime}.`;
+  const oldStyleMatch = trimmed.match(/^remind\s+me\s+(in\s+.+?|at\s+\d{1,2}:\d{2}|tomorrow(?:\s+at\s+\d{1,2}:\d{2})?)\s+(?:to|that)\s+(.+)$/i);
+  if (oldStyleMatch) {
+    const resolved = resolveOldStyleTimePhrase(oldStyleMatch[1], tz);
+    if (!resolved) {
+      return '❌ Couldn\'t parse that time. Examples:\n• remind me in 30m to call mom\n• remind me at 14:30 to call mom\n• remind me tomorrow to call mom\n• remind me tomorrow at 9:00 to call mom';
+    }
+    return addReminder(oldStyleMatch[2].trim(), resolved.dueDate, resolved.dueTime, tz);
   }
 
   if (/^reminders$/i.test(trimmed)) {
