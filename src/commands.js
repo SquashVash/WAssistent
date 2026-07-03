@@ -443,6 +443,15 @@ Persisted, shown in today's daily brief until they fire, and sent as an AI-writt
 • \`remind me to <what> tomorrow at 18:30\`
 • \`remind me to <what> on tuesday\`
 • \`remind me to <what> on tuesday at 9:00\`
+
+*🔁 Repeating*
+• \`remind me daily to <what> [at HH:MM]\`
+• \`remind me to <what> weekly [at HH:MM]\`
+• \`add a daily reminder to <what>\`
+• \`add a weekly reminder to <what>\`
+• \`add a monthly reminder on the 1st to <what> [at HH:MM]\`
+• \`add a reminder every month on the 15th to <what>\`
+
 • \`reminders\` — list pending reminders
 • \`cancel reminder <n>\` — cancel one by its list number`,
     },
