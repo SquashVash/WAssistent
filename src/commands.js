@@ -432,10 +432,9 @@ export async function handleCommand(msg) {
       emoji: '⏰',
       label: 'Reminders',
       text: `*⏰ Reminders*
-Persisted, shown in today's daily brief until they fire, and sent as an AI-written nudge at the scheduled time.
+Persisted, shown in today's daily brief until they fire, and sent as an AI-written nudge at the scheduled time. Works in either word order:
 • \`remind me in 30m to <what>\`
-• \`remind me in 2h to <what>\`
-• \`remind me in 1h30m to <what>\`
+• \`remind me that <what> in 22m\`
 • \`remind me at 14:30 to <what>\`
 • \`remind me tomorrow to <what>\`
 • \`remind me tomorrow at 9:00 to <what>\`
@@ -443,6 +442,7 @@ Persisted, shown in today's daily brief until they fire, and sent as an AI-writt
 • \`remind me to <what> tomorrow\`
 • \`remind me to <what> tomorrow at 18:30\`
 • \`remind me to <what> on tuesday\`
+• \`remind me to <what> on tuesday at 9:00\`
 • \`reminders\` — list pending reminders
 • \`cancel reminder <n>\` — cancel one by its list number`,
     },

@@ -102,8 +102,9 @@ function resolveNextOccurrence(hh, mm, tz) {
   return { dueDate, dueTime: `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}` };
 }
 
-// Resolves the old-style leading time phrase: "in ...", "at HH:MM", "tomorrow[ at HH:MM]".
-function resolveOldStyleTimePhrase(phrase, tz) {
+// Resolves a time phrase: "in ...", "at HH:MM", "today[ at HH:MM]",
+// "tomorrow[ at HH:MM]", or "on <weekday>[ at HH:MM]".
+function resolveTimePhrase(phrase, tz) {
   const p = phrase.trim();
 
   const durationMs = parseDurationMs(p);
@@ -117,13 +118,14 @@ function resolveOldStyleTimePhrase(phrase, tz) {
     return resolveNextOccurrence(hh, mm, tz);
   }
 
-  const tomorrowMatch = p.match(/^tomorrow(?:\s+at\s+(\d{1,2}):(\d{2}))?$/i);
-  if (tomorrowMatch) {
-    const dueDate = addDaysToDateStr(todayDateStr(tz), 1);
+  const dateWordMatch = p.match(/^(today|tomorrow|on\s+\w+)(?:\s+at\s+(\d{1,2}):(\d{2}))?$/i);
+  if (dateWordMatch) {
+    const dueDate = resolveDueDate(dateWordMatch[1], tz);
+    if (!dueDate) return null;
     let dueTime = DEFAULT_TIME;
-    if (tomorrowMatch[1] !== undefined) {
-      const hh = parseInt(tomorrowMatch[1], 10);
-      const mm = parseInt(tomorrowMatch[2], 10);
+    if (dateWordMatch[2] !== undefined) {
+      const hh = parseInt(dateWordMatch[2], 10);
+      const mm = parseInt(dateWordMatch[3], 10);
       if (hh > 23 || mm > 59) return null;
       dueTime = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
     }
@@ -140,37 +142,37 @@ function addReminder(what, dueDate, dueTime, tz) {
   return `✅ I'll remind you to "${what}" ${describeDueDate(dueDate, tz)} at ${dueTime}.`;
 }
 
-// Matches two phrasings:
-//   "remind me to <what> today|tomorrow|on <weekday> [at HH:MM]"
-//   "remind me in .../at HH:MM/tomorrow[ at HH:MM] to|that <what>"
+function parseErrorMessage() {
+  return '❌ Couldn\'t parse that time. Examples:\n• remind me in 30m to call mom\n• remind me that my laundry is done in 22m\n• remind me at 14:30 to call mom\n• remind me to call mom tomorrow\n• remind me to call mom on tuesday at 9:00';
+}
+
+// Time phrase shared by both sentence orders below (one capturing group when embedded).
+const TIME_PHRASE = '(?:in\\s+\\S.*|at\\s+\\d{1,2}:\\d{2}|today(?:\\s+at\\s+\\d{1,2}:\\d{2})?|tomorrow(?:\\s+at\\s+\\d{1,2}:\\d{2})?|on\\s+\\w+(?:\\s+at\\s+\\d{1,2}:\\d{2})?)';
+
+// "remind me to|that <what> <time phrase>" — payload first, e.g.
+// "remind me that my laundry is done in 22m" or "remind me to call mom tomorrow"
+const PAYLOAD_FIRST_RE = new RegExp(`^remind\\s+me\\s+(?:to|that)\\s+(.+?)\\s+(${TIME_PHRASE})$`, 'i');
+
+// "remind me <time phrase> to|that <what>" — time phrase first, e.g.
+// "remind me in 30m to call mom"
+const TIME_FIRST_RE = new RegExp(`^remind\\s+me\\s+(${TIME_PHRASE})\\s+(?:to|that)\\s+(.+)$`, 'i');
+
 export function handleReminderCommand(text) {
   const trimmed = text.trim();
   const tz = getTz();
 
-  const newStyleMatch = trimmed.match(/^remind\s+me\s+to\s+(.+?)\s+(today|tomorrow|on\s+\w+)(?:\s+at\s+(\d{1,2}):(\d{2}))?$/i);
-  if (newStyleMatch) {
-    const what = newStyleMatch[1].trim();
-    const dueDate = resolveDueDate(newStyleMatch[2], tz);
-    if (!dueDate) return null;
-
-    let dueTime = DEFAULT_TIME;
-    if (newStyleMatch[3] !== undefined) {
-      const hh = parseInt(newStyleMatch[3], 10);
-      const mm = parseInt(newStyleMatch[4], 10);
-      if (hh > 23 || mm > 59) return '❌ Invalid time. Use HH:MM (24h format).';
-      dueTime = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
-    }
-
-    return addReminder(what, dueDate, dueTime, tz);
+  const payloadFirstMatch = trimmed.match(PAYLOAD_FIRST_RE);
+  if (payloadFirstMatch) {
+    const resolved = resolveTimePhrase(payloadFirstMatch[2], tz);
+    if (!resolved) return parseErrorMessage();
+    return addReminder(payloadFirstMatch[1].trim(), resolved.dueDate, resolved.dueTime, tz);
   }
 
-  const oldStyleMatch = trimmed.match(/^remind\s+me\s+(in\s+.+?|at\s+\d{1,2}:\d{2}|tomorrow(?:\s+at\s+\d{1,2}:\d{2})?)\s+(?:to|that)\s+(.+)$/i);
-  if (oldStyleMatch) {
-    const resolved = resolveOldStyleTimePhrase(oldStyleMatch[1], tz);
-    if (!resolved) {
-      return '❌ Couldn\'t parse that time. Examples:\n• remind me in 30m to call mom\n• remind me at 14:30 to call mom\n• remind me tomorrow to call mom\n• remind me tomorrow at 9:00 to call mom';
-    }
-    return addReminder(oldStyleMatch[2].trim(), resolved.dueDate, resolved.dueTime, tz);
+  const timeFirstMatch = trimmed.match(TIME_FIRST_RE);
+  if (timeFirstMatch) {
+    const resolved = resolveTimePhrase(timeFirstMatch[1], tz);
+    if (!resolved) return parseErrorMessage();
+    return addReminder(timeFirstMatch[2].trim(), resolved.dueDate, resolved.dueTime, tz);
   }
 
   if (/^reminders$/i.test(trimmed)) {
