@@ -25,7 +25,7 @@ function todayDateStr(tz) {
   return new Date().toLocaleDateString('en-CA', { timeZone: tz });
 }
 
-function addDaysToDateStr(dateStr, days) {
+export function addDaysToDateStr(dateStr, days) {
   const [y, m, d] = dateStr.split('-').map(Number);
   const dt = new Date(Date.UTC(y, m - 1, d));
   dt.setUTCDate(dt.getUTCDate() + days);
@@ -179,11 +179,24 @@ function buildTimeStr(hhStr, mmStr) {
   return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
 }
 
+function makeId() {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
 function addReminder(what, dueDate, dueTime, tz) {
   const reminders = getReminders();
-  reminders.push({ id: Date.now().toString(36), text: what, dueDate, dueTime });
+  reminders.push({ id: makeId(), text: what, dueDate, dueTime });
   saveReminders(reminders);
   return `✅ I'll remind you to "${what}" ${describeDueDate(dueDate, tz)} at ${dueTime}.`;
+}
+
+// For other modules (e.g. the hotel-booking email scanner) to create a reminder
+// directly from structured data, bypassing the chat-command text parsing above.
+// `silent: true` means it only appears in the daily brief and never sends a message.
+export function scheduleAutoReminder({ text, dueDate, dueTime, silent = false }) {
+  const reminders = getReminders();
+  reminders.push({ id: makeId(), text, dueDate, dueTime: dueTime || DEFAULT_TIME, silent });
+  saveReminders(reminders);
 }
 
 // Computes the first occurrence for a new recurring reminder.
@@ -249,7 +262,7 @@ function addRecurringReminder(type, text, opts, tz) {
   const start = resolveRecurrenceStart(type, tz, recurOpts);
 
   const reminders = getReminders();
-  reminders.push({ id: Date.now().toString(36), text, dueDate: start.dueDate, dueTime: start.dueTime, recurrence });
+  reminders.push({ id: makeId(), text, dueDate: start.dueDate, dueTime: start.dueTime, recurrence });
   saveReminders(reminders);
 
   return `✅ I'll remind you to "${text}" ${describeRecurrence(recurrence)} at ${start.dueTime} (starting ${describeDueDate(start.dueDate, tz)}).`;
@@ -348,7 +361,8 @@ export function handleReminderCommand(text) {
     if (!reminders.length) return '📭 No standing reminders.';
     const lines = reminders.map((r, i) => {
       const recur = r.recurrence ? ` (${describeRecurrence(r.recurrence)})` : '';
-      return `${i + 1}. ${r.text} — ${describeDueDate(r.dueDate, tz)} at ${r.dueTime}${recur}`;
+      const silentTag = r.silent ? ' (brief only)' : '';
+      return `${i + 1}. ${r.text} — ${describeDueDate(r.dueDate, tz)} at ${r.dueTime}${recur}${silentTag}`;
     });
     return `⏰ *Reminders*\n${lines.join('\n')}`;
   }
@@ -396,6 +410,8 @@ async function checkDueReminders() {
   saveReminders([...remaining, ...rescheduled]);
 
   for (const r of due) {
+    if (r.silent) continue; // brief-only reminder (e.g. hotel check-in) — never sends a message
+
     try {
       const message = await humanizeReminder(r.text);
       await sendMessage(process.env.MY_CHAT_ID, message);

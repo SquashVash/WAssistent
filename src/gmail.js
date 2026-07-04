@@ -1,14 +1,21 @@
 import { google } from 'googleapis';
 import { sendDocument, sendMessage } from './messaging.js';
 import { getSetting, setSetting } from './settings.js';
-import { extractFlightInfo } from './ai.js';
+import { extractFlightInfo, extractHotelBooking } from './ai.js';
 import { scheduleFlightTracking } from './flightTracker.js';
+import { scheduleAutoReminder, addDaysToDateStr } from './reminders.js';
 
 // Keywords used to identify ticket/booking emails by subject
 const TICKET_KEYWORDS = /ticket|booking|reservation|boarding|e-ticket|confirmation|voucher/i;
 
 // Keywords used to identify flight-related emails
 const FLIGHT_EMAIL_KEYWORDS = /flight|itinerary|boarding pass|e-ticket|airline|booking|bravofly|lastminute\.com|travel|fly|trip\.com/i;
+
+// Keywords used to identify hotel booking confirmation emails by subject
+const HOTEL_BOOKING_KEYWORDS = /your booking is confirmed/i;
+
+// Check-out reminders fire the evening before, at this time.
+const CHECKOUT_REMINDER_TIME = '20:00';
 
 const DEFAULT_POLL_MINUTES = 15;
 
@@ -101,6 +108,16 @@ async function poll(notify = null, collectOnly = false) {
 
   if (!collectOnly) {
     for (const r of flightResults) await sendMessage(process.env.MY_CHAT_ID, r);
+  }
+
+  const bookingResults = await scanForHotelBookingEmails().catch(err => {
+    console.error('❌ Gmail: hotel booking scan failed:', err.message);
+    return [];
+  });
+  results.push(...bookingResults);
+
+  if (!collectOnly) {
+    for (const r of bookingResults) await notify?.(r);
   }
 
   const auth = getAuthClient();
@@ -222,6 +239,79 @@ export async function scanForFlightEmails(notify = null) {
       }
     } catch (err) {
       console.error(`❌ Gmail: failed to process flight email ${id}:`, err.message);
+    }
+  }
+
+  return results;
+}
+
+// Tracks message IDs already scanned for hotel bookings this session
+const scannedBookingIds = new Set();
+
+// Scans for "Your booking is confirmed"-style emails, extracts check-in/check-out via AI,
+// and auto-creates: a silent (brief-only) reminder for check-in, and a normal reminder
+// the evening before check-out.
+export async function scanForHotelBookingEmails() {
+  const auth = getAuthClient();
+  const gmail = google.gmail({ version: 'v1', auth });
+
+  const res = await gmail.users.messages.list({
+    userId: 'me',
+    q: 'is:unread subject:("your booking is confirmed")',
+    maxResults: 20,
+  });
+
+  const messages = res.data.messages || [];
+  const newMessages = messages.filter(({ id }) => !scannedBookingIds.has(id));
+
+  const results = [];
+
+  for (const { id } of newMessages) {
+    scannedBookingIds.add(id);
+    try {
+      const msg = await gmail.users.messages.get({ userId: 'me', id, format: 'full' });
+      const subject = getHeader(msg.data, 'Subject');
+
+      if (!HOTEL_BOOKING_KEYWORDS.test(subject)) {
+        console.log(`   ↳ skipped "${subject}" (no hotel booking keywords)`);
+        continue;
+      }
+
+      const body = extractEmailBody(msg.data.payload);
+      if (!body) {
+        console.log(`   ↳ skipped "${subject}" (no body text)`);
+        continue;
+      }
+
+      console.log(`🏨 Extracting hotel booking info from: "${subject}"`);
+      const booking = await extractHotelBooking(body);
+
+      if (!booking) {
+        console.log(`   ↳ no booking info found`);
+        continue;
+      }
+
+      const hotelName = booking.hotelName || 'your hotel';
+
+      scheduleAutoReminder({
+        text: `Check in to ${hotelName}`,
+        dueDate: booking.checkIn.date,
+        dueTime: booking.checkIn.time || '15:00',
+        silent: true,
+      });
+
+      const checkoutTimeNote = booking.checkOut.time ? ` by ${booking.checkOut.time}` : '';
+      scheduleAutoReminder({
+        text: `check out of ${hotelName} tomorrow morning${checkoutTimeNote}`,
+        dueDate: addDaysToDateStr(booking.checkOut.date, -1),
+        dueTime: CHECKOUT_REMINDER_TIME,
+        silent: false,
+      });
+
+      console.log(`   ↳ scheduled check-in (${booking.checkIn.date}) and check-out (${booking.checkOut.date}) reminders for ${hotelName}`);
+      results.push(`🏨 Added check-in/check-out reminders for *${hotelName}*`);
+    } catch (err) {
+      console.error(`❌ Gmail: failed to process hotel booking email ${id}:`, err.message);
     }
   }
 

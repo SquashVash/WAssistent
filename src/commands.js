@@ -473,7 +473,7 @@ Persisted, shown in today's daily brief until they fire, and sent as an AI-writt
       emoji: '📧',
       label: 'Emails',
       text: `*📧 Emails*
-• \`fetch emails\` — check Gmail now for ticket PDFs and flight bookings
+• \`fetch emails\` — check Gmail now for ticket PDFs, flight bookings, and hotel booking confirmations (auto-adds check-in/check-out reminders — check-in shows in the brief only, check-out is sent the evening before)
 • \`receipts\` — send the latest receipt from each enabled source this month
 • \`receipts <month>\` — send receipts for a specific month (e.g. \`receipts july\`)
 • \`receipts <source>\` — send the latest receipt from one source (e.g. \`receipts google cloud\`)

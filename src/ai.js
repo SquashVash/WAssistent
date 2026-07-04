@@ -101,6 +101,31 @@ export async function humanizeReminder(text) {
   return response.choices[0].message.content.trim();
 }
 
+export async function extractHotelBooking(emailText) {
+  const response = await openai.chat.completions.create({
+    model: 'gpt-4o-mini',
+    messages: [
+      {
+        role: 'system',
+        content: 'You extract hotel booking details from confirmation emails. Respond with JSON only, no markdown. If this isn\'t a hotel booking confirmation, or the check-in/check-out dates are missing, respond with null.',
+      },
+      {
+        role: 'user',
+        content: `Extract the hotel name, check-in date/time, and check-out date/time from this email. Return JSON: {"hotelName":"...","checkIn":{"date":"YYYY-MM-DD","time":"HH:MM or null"},"checkOut":{"date":"YYYY-MM-DD","time":"HH:MM or null"}} or null if not a hotel booking confirmation or the dates are missing.\n\n${emailText.slice(0, 4000)}`,
+      },
+    ],
+    response_format: { type: 'json_object' },
+  });
+
+  try {
+    const parsed = JSON.parse(response.choices[0].message.content);
+    if (!parsed || !parsed.checkIn?.date || !parsed.checkOut?.date) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
 export async function extractFlightInfo(emailText) {
   const response = await openai.chat.completions.create({
     model: 'gpt-4o-mini',
