@@ -183,19 +183,22 @@ export async function sendDailyBrief() {
     console.warn('⚠️ Could not fetch reminders:', err.message);
   }
 
-  const sections = [
-    renderSection('Birthdays', '🎂', buildBirthdaysSection(events, todayStr, tomorrowStr, tz)),
-    renderSection('Schedule', '📅', buildScheduleSection(events, todayStr, tomorrowStr, tz)),
-    renderSection('Payments', '💰', buildPaymentsSection(events, todayStr, tomorrowStr, tz)),
-    renderSection('Tasks', '✅', buildTasksSection(tasks, tz)),
-    renderSection('Reminders', '⏰', reminders),
-  ].filter(Boolean);
+  const birthdaysSection = renderSection('Birthdays', '🎂', buildBirthdaysSection(events, todayStr, tomorrowStr, tz));
+  const scheduleSection = renderSection('Schedule', '📅', buildScheduleSection(events, todayStr, tomorrowStr, tz));
+  const paymentsSection = renderSection('Payments', '💰', buildPaymentsSection(events, todayStr, tomorrowStr, tz));
+  const tasksSection = renderSection('Tasks', '✅', buildTasksSection(tasks, tz));
+  const remindersSection = renderSection('Reminders', '⏰', reminders);
 
-  const briefBody = sections.join('\n\n');
+  // Display order keeps Birthdays first; the AI only sees it last so it doesn't
+  // dominate the generated intro sentence.
+  const briefBody = [birthdaysSection, scheduleSection, paymentsSection, tasksSection, remindersSection]
+    .filter(Boolean).join('\n\n');
+  const aiContext = [scheduleSection, paymentsSection, tasksSection, remindersSection, birthdaysSection]
+    .filter(Boolean).join('\n\n');
 
   let intro = '';
   try {
-    intro = await generateBriefIntro(briefBody, todayLabel);
+    intro = await generateBriefIntro(aiContext, todayLabel);
   } catch (err) {
     console.warn('⚠️ Could not generate brief intro:', err.message);
   }
