@@ -69,9 +69,18 @@ function isPaymentEvent(event) {
   return isIncomeEvent(event) || isExpenseEvent(event);
 }
 
-function formatEventBullet(event, tz) {
+function formatEventBullet(event, tz, todayStr, tomorrowStr) {
   const summary = event.summary || '(No title)';
-  if (event.start?.date) return `${summary}.`;
+
+  if (event.start?.date) {
+    if ((stayLengthDays(event) || 0) > 1) {
+      const venue = extractVenueName(summary);
+      if (event.start.date === todayStr) return `Checking in to ${venue}.`;
+      if (!eventCoversDate(event, tomorrowStr, tz)) return `Checking out of ${venue}.`;
+    }
+    return `${summary}.`;
+  }
+
   const time = new Date(event.start.dateTime).toLocaleTimeString('en-US', {
     timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false,
   });
@@ -104,30 +113,6 @@ function buildBirthdaysSection(events, todayStr, tomorrowStr, tz) {
   return lines;
 }
 
-function buildScheduleSection(events, todayStr, tomorrowStr, tz) {
-  const todays = events.filter(e => !isBirthdayEvent(e) && !isPaymentEvent(e) && eventCoversDate(e, todayStr, tz));
-
-  const allDay = todays.filter(e => e.start?.date);
-  const timed = todays.filter(e => e.start?.dateTime)
-    .sort((a, b) => new Date(a.start.dateTime) - new Date(b.start.dateTime));
-
-  // Collapse a same-day hotel switch (one multi-day stay's last day + another's first
-  // day) into a single "Transfer from X to Y." bullet instead of two stay bullets.
-  const multiDayStays = allDay.filter(e => (stayLengthDays(e) || 0) > 1);
-  const ending = multiDayStays.find(e => !eventCoversDate(e, tomorrowStr, tz));
-  const starting = ending && multiDayStays.find(e => e.start.date === todayStr && e !== ending);
-
-  const transferLines = [];
-  let remainingAllDay = allDay;
-
-  if (ending && starting) {
-    transferLines.push(`Transfer from ${extractVenueName(ending.summary)} to ${extractVenueName(starting.summary)}.`);
-    remainingAllDay = allDay.filter(e => e !== ending && e !== starting);
-  }
-
-  return [...transferLines, ...remainingAllDay.map(e => formatEventBullet(e, tz)), ...timed.map(e => formatEventBullet(e, tz))];
-}
-
 function sortAllDayThenTimed(events) {
   const allDay = events.filter(e => e.start?.date);
   const timed = events.filter(e => e.start?.dateTime)
@@ -135,11 +120,16 @@ function sortAllDayThenTimed(events) {
   return [...allDay, ...timed];
 }
 
-function buildPaymentsSection(events, todayStr, tz) {
+function buildScheduleSection(events, todayStr, tomorrowStr, tz) {
+  const todays = events.filter(e => !isBirthdayEvent(e) && !isPaymentEvent(e) && eventCoversDate(e, todayStr, tz));
+  return sortAllDayThenTimed(todays).map(e => formatEventBullet(e, tz, todayStr, tomorrowStr));
+}
+
+function buildPaymentsSection(events, todayStr, tomorrowStr, tz) {
   const todays = events.filter(e => isPaymentEvent(e) && eventCoversDate(e, todayStr, tz));
   return sortAllDayThenTimed(todays).map(e => {
     const emoji = isIncomeEvent(e) ? '💰' : '💸';
-    return `${emoji} ${formatEventBullet(e, tz)}`;
+    return `${emoji} ${formatEventBullet(e, tz, todayStr, tomorrowStr)}`;
   });
 }
 
@@ -196,7 +186,7 @@ export async function sendDailyBrief() {
   const sections = [
     renderSection('Birthdays', '🎂', buildBirthdaysSection(events, todayStr, tomorrowStr, tz)),
     renderSection('Schedule', '📅', buildScheduleSection(events, todayStr, tomorrowStr, tz)),
-    renderSection('Payments', '💰', buildPaymentsSection(events, todayStr, tz)),
+    renderSection('Payments', '💰', buildPaymentsSection(events, todayStr, tomorrowStr, tz)),
     renderSection('Tasks', '✅', buildTasksSection(tasks, tz)),
     renderSection('Reminders', '⏰', reminders),
   ].filter(Boolean);
