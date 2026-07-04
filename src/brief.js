@@ -45,7 +45,10 @@ function eventCoversDate(event, dateStr, tz) {
 }
 
 function isBirthdayEvent(event) {
-  return /birthday/i.test(event.summary || '');
+  // Google's auto-synced Contacts birthdays set eventType:'birthday' with summary
+  // being just the person's name (no "birthday" text) — text match is a fallback
+  // for manually-created birthday events.
+  return event.eventType === 'birthday' || /birthday/i.test(event.summary || '');
 }
 
 function extractBirthdayName(title) {
@@ -56,7 +59,7 @@ function extractBirthdayName(title) {
 
 function formatEventBullet(event, tz) {
   const summary = event.summary || '(No title)';
-  if (event.start?.date) return `Staying at ${summary}.`;
+  if (event.start?.date) return `${summary}.`;
   const time = new Date(event.start.dateTime).toLocaleTimeString('en-US', {
     timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false,
   });
