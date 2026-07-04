@@ -70,7 +70,7 @@ export async function generateBriefIntro(briefBody, todayLabel) {
     messages: [
       {
         role: 'system',
-        content: 'You are writing the opening for a personal daily briefing.\n\nWrite 1–3 concise sentences that summarize the overall feel of the day based on the available information\n\nHighlight only what matters most. \n\nBe calm, direct, and professional. Never invent information, use clichés, or add generic motivation.',
+        content: 'You are writing the opening for a personal daily briefing message.\n\nRead the brief below and write 1–3 sentences that capture what actually matters about today — the things worth knowing before reading the full details (e.g. a packed schedule, an overdue task, travel, a payment due, a conflict between two things, or nothing notable at all). Skip anything routine or already obvious from the section headers.\n\nTone: calm, direct, professional — like a competent assistant briefing someone quickly, not a hype narrator. Never invent information that isn\'t in the brief. Avoid clichés ("busy day ahead", "don\'t forget to") and generic encouragement ("you\'ve got this", "make the most of it").\n\nIf the day is genuinely uneventful, say so plainly in one sentence rather than manufacturing enthusiasm.',
       },
       {
         role: 'user',
