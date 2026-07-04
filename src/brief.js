@@ -57,8 +57,16 @@ function extractBirthdayName(title) {
   return name || title;
 }
 
+function isIncomeEvent(event) {
+  return /income/i.test(event.summary || '');
+}
+
+function isExpenseEvent(event) {
+  return /payment/i.test(event.summary || '');
+}
+
 function isPaymentEvent(event) {
-  return /income|payment/i.test(event.summary || '');
+  return isIncomeEvent(event) || isExpenseEvent(event);
 }
 
 function formatEventBullet(event, tz) {
@@ -83,18 +91,22 @@ function buildBirthdaysSection(events, todayStr, tomorrowStr, tz) {
 
 function buildScheduleSection(events, todayStr, tz) {
   const todays = events.filter(e => !isBirthdayEvent(e) && !isPaymentEvent(e) && eventCoversDate(e, todayStr, tz));
-  const allDay = todays.filter(e => e.start?.date);
-  const timed = todays.filter(e => e.start?.dateTime)
+  return sortAllDayThenTimed(todays).map(e => formatEventBullet(e, tz));
+}
+
+function sortAllDayThenTimed(events) {
+  const allDay = events.filter(e => e.start?.date);
+  const timed = events.filter(e => e.start?.dateTime)
     .sort((a, b) => new Date(a.start.dateTime) - new Date(b.start.dateTime));
-  return [...allDay, ...timed].map(e => formatEventBullet(e, tz));
+  return [...allDay, ...timed];
 }
 
 function buildPaymentsSection(events, todayStr, tz) {
   const todays = events.filter(e => isPaymentEvent(e) && eventCoversDate(e, todayStr, tz));
-  const allDay = todays.filter(e => e.start?.date);
-  const timed = todays.filter(e => e.start?.dateTime)
-    .sort((a, b) => new Date(a.start.dateTime) - new Date(b.start.dateTime));
-  return [...allDay, ...timed].map(e => formatEventBullet(e, tz));
+  return sortAllDayThenTimed(todays).map(e => {
+    const emoji = isIncomeEvent(e) ? '💰' : '💸';
+    return `${emoji} ${formatEventBullet(e, tz)}`;
+  });
 }
 
 function buildTasksSection(tasks, tz) {
