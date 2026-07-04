@@ -78,6 +78,20 @@ function formatEventBullet(event, tz) {
   return `${summary} at ${time}.`;
 }
 
+// Matches a "(Day N/M)" suffix on multi-day stay events, e.g. "Stay at Hotel X (Day 2/4)".
+function parseStayDayCounter(title) {
+  const m = (title || '').match(/\(day\s*(\d+)\s*\/\s*(\d+)\)\s*$/i);
+  if (!m) return null;
+  return { day: parseInt(m[1], 10), totalDays: parseInt(m[2], 10) };
+}
+
+function extractVenueName(title) {
+  return (title || '')
+    .replace(/\s*\(day\s*\d+\s*\/\s*\d+\)\s*$/i, '')
+    .replace(/^stay(?:ing)?\s+at\s+/i, '')
+    .trim();
+}
+
 function buildBirthdaysSection(events, todayStr, tomorrowStr, tz) {
   const lines = [];
   for (const event of events) {
@@ -91,7 +105,29 @@ function buildBirthdaysSection(events, todayStr, tomorrowStr, tz) {
 
 function buildScheduleSection(events, todayStr, tz) {
   const todays = events.filter(e => !isBirthdayEvent(e) && !isPaymentEvent(e) && eventCoversDate(e, todayStr, tz));
-  return sortAllDayThenTimed(todays).map(e => formatEventBullet(e, tz));
+
+  const allDay = todays.filter(e => e.start?.date);
+  const timed = todays.filter(e => e.start?.dateTime)
+    .sort((a, b) => new Date(a.start.dateTime) - new Date(b.start.dateTime));
+
+  // Collapse a same-day hotel switch (one stay's last day + another stay's first day)
+  // into a single "Transfer from X to Y." bullet instead of two separate stay bullets.
+  const stays = allDay
+    .map(event => ({ event, counter: parseStayDayCounter(event.summary) }))
+    .filter(s => s.counter);
+
+  const ending = stays.find(s => s.counter.day === s.counter.totalDays);
+  const starting = ending && stays.find(s => s.counter.day === 1 && s !== ending);
+
+  const transferLines = [];
+  let remainingAllDay = allDay;
+
+  if (ending && starting) {
+    transferLines.push(`Transfer from ${extractVenueName(ending.event.summary)} to ${extractVenueName(starting.event.summary)}.`);
+    remainingAllDay = allDay.filter(e => e !== ending.event && e !== starting.event);
+  }
+
+  return [...transferLines, ...remainingAllDay.map(e => formatEventBullet(e, tz)), ...timed.map(e => formatEventBullet(e, tz))];
 }
 
 function sortAllDayThenTimed(events) {
