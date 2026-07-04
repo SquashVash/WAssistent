@@ -292,17 +292,18 @@ export async function scanForHotelBookingEmails() {
       }
 
       const hotelName = booking.hotelName || 'your hotel';
+      const checkInTime = booking.checkIn.time || '15:00';
+      const checkOutTime = booking.checkOut.time || '11:00';
 
       scheduleAutoReminder({
-        text: `Check in to ${hotelName}`,
+        text: `Check-In today is at ${checkInTime}`,
         dueDate: booking.checkIn.date,
-        dueTime: booking.checkIn.time || '15:00',
+        dueTime: checkInTime,
         silent: true,
       });
 
-      const checkoutTimeNote = booking.checkOut.time ? ` by ${booking.checkOut.time}` : '';
       scheduleAutoReminder({
-        text: `check out of ${hotelName} tomorrow morning${checkoutTimeNote}`,
+        text: `Check-out tomorrow is at ${checkOutTime}`,
         dueDate: addDaysToDateStr(booking.checkOut.date, -1),
         dueTime: CHECKOUT_REMINDER_TIME,
         silent: false,
