@@ -70,7 +70,7 @@ export async function generateBriefIntro(briefBody, todayLabel) {
     messages: [
       {
         role: 'system',
-        content: 'Write one short, warm sentence summarizing the day ahead, based on the brief below. Sound like a real person, not a template. No markdown, no greeting, no sign-off — just the sentence.',
+        content: 'Write one short sentence summarizing the day ahead, based on the brief below. Tone: warm but professional — sound like a real person, not a template, but don\'t gush or over-celebrate. If there\'s a birthday today, mention it only briefly as a reminder, not as the focus of the sentence. No markdown, no greeting, no sign-off — just the sentence.',
       },
       {
         role: 'user',
