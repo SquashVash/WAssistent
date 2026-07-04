@@ -57,6 +57,10 @@ function extractBirthdayName(title) {
   return name || title;
 }
 
+function isPaymentEvent(event) {
+  return /income|payment/i.test(event.summary || '');
+}
+
 function formatEventBullet(event, tz) {
   const summary = event.summary || '(No title)';
   if (event.start?.date) return `${summary}.`;
@@ -78,7 +82,15 @@ function buildBirthdaysSection(events, todayStr, tomorrowStr, tz) {
 }
 
 function buildScheduleSection(events, todayStr, tz) {
-  const todays = events.filter(e => !isBirthdayEvent(e) && eventCoversDate(e, todayStr, tz));
+  const todays = events.filter(e => !isBirthdayEvent(e) && !isPaymentEvent(e) && eventCoversDate(e, todayStr, tz));
+  const allDay = todays.filter(e => e.start?.date);
+  const timed = todays.filter(e => e.start?.dateTime)
+    .sort((a, b) => new Date(a.start.dateTime) - new Date(b.start.dateTime));
+  return [...allDay, ...timed].map(e => formatEventBullet(e, tz));
+}
+
+function buildPaymentsSection(events, todayStr, tz) {
+  const todays = events.filter(e => isPaymentEvent(e) && eventCoversDate(e, todayStr, tz));
   const allDay = todays.filter(e => e.start?.date);
   const timed = todays.filter(e => e.start?.dateTime)
     .sort((a, b) => new Date(a.start.dateTime) - new Date(b.start.dateTime));
@@ -138,6 +150,7 @@ export async function sendDailyBrief() {
   const sections = [
     renderSection('Birthdays', '🎂', buildBirthdaysSection(events, todayStr, tomorrowStr, tz)),
     renderSection('Schedule', '📅', buildScheduleSection(events, todayStr, tz)),
+    renderSection('Payments', '💰', buildPaymentsSection(events, todayStr, tz)),
     renderSection('Tasks', '✅', buildTasksSection(tasks, tz)),
     renderSection('Reminders', '⏰', reminders),
   ].filter(Boolean);
