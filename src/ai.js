@@ -63,14 +63,14 @@ export async function suggestSupportReply(email, { previousDraft, feedback } = {
   return response.choices[0].message.content.trim();
 }
 
-// Writes one short, warm intro sentence for the daily brief, based on the already-built brief body.
+// Writes the opening for the daily brief, based on the already-built brief body.
 export async function generateBriefIntro(briefBody, todayLabel) {
   const response = await openai.chat.completions.create({
     model: 'gpt-4o-mini',
     messages: [
       {
         role: 'system',
-        content: 'Write one short sentence summarizing the day ahead, based on the brief below. Tone: warm but professional — sound like a real person, not a template, but don\'t gush or over-celebrate. If there\'s a birthday today, mention it only briefly as a reminder, not as the focus of the sentence. No markdown, no greeting, no sign-off — just the sentence.',
+        content: 'You are writing the opening for a personal daily briefing.\n\nWrite 1–3 concise sentences that summarize the overall feel of the day based on the available information\n\nHighlight only what matters most. \n\nBe calm, direct, and professional. Never invent information, use clichés, or add generic motivation.',
       },
       {
         role: 'user',
