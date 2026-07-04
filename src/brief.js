@@ -78,18 +78,19 @@ function formatEventBullet(event, tz) {
   return `${summary} at ${time}.`;
 }
 
-// Matches a "(Day N/M)" suffix on multi-day stay events, e.g. "Stay at Hotel X (Day 2/4)".
-function parseStayDayCounter(title) {
-  const m = (title || '').match(/\(day\s*(\d+)\s*\/\s*(\d+)\)\s*$/i);
-  if (!m) return null;
-  return { day: parseInt(m[1], 10), totalDays: parseInt(m[2], 10) };
+// Google Calendar's "(Day N/M)" label is computed by its UI from the event's start/end
+// dates — it isn't part of the actual event data, so we compute the same thing ourselves.
+function stayLengthDays(event) {
+  if (!event.start?.date || !event.end?.date) return null;
+  const [y1, m1, d1] = event.start.date.split('-').map(Number);
+  const [y2, m2, d2] = event.end.date.split('-').map(Number);
+  const start = Date.UTC(y1, m1 - 1, d1);
+  const end = Date.UTC(y2, m2 - 1, d2);
+  return Math.round((end - start) / 86_400_000);
 }
 
 function extractVenueName(title) {
-  return (title || '')
-    .replace(/\s*\(day\s*\d+\s*\/\s*\d+\)\s*$/i, '')
-    .replace(/^stay(?:ing)?\s+at\s+/i, '')
-    .trim();
+  return (title || '').replace(/^stay(?:ing)?\s+at\s+/i, '').trim();
 }
 
 function buildBirthdaysSection(events, todayStr, tomorrowStr, tz) {
@@ -103,28 +104,25 @@ function buildBirthdaysSection(events, todayStr, tomorrowStr, tz) {
   return lines;
 }
 
-function buildScheduleSection(events, todayStr, tz) {
+function buildScheduleSection(events, todayStr, tomorrowStr, tz) {
   const todays = events.filter(e => !isBirthdayEvent(e) && !isPaymentEvent(e) && eventCoversDate(e, todayStr, tz));
 
   const allDay = todays.filter(e => e.start?.date);
   const timed = todays.filter(e => e.start?.dateTime)
     .sort((a, b) => new Date(a.start.dateTime) - new Date(b.start.dateTime));
 
-  // Collapse a same-day hotel switch (one stay's last day + another stay's first day)
-  // into a single "Transfer from X to Y." bullet instead of two separate stay bullets.
-  const stays = allDay
-    .map(event => ({ event, counter: parseStayDayCounter(event.summary) }))
-    .filter(s => s.counter);
-
-  const ending = stays.find(s => s.counter.day === s.counter.totalDays);
-  const starting = ending && stays.find(s => s.counter.day === 1 && s !== ending);
+  // Collapse a same-day hotel switch (one multi-day stay's last day + another's first
+  // day) into a single "Transfer from X to Y." bullet instead of two stay bullets.
+  const multiDayStays = allDay.filter(e => (stayLengthDays(e) || 0) > 1);
+  const ending = multiDayStays.find(e => !eventCoversDate(e, tomorrowStr, tz));
+  const starting = ending && multiDayStays.find(e => e.start.date === todayStr && e !== ending);
 
   const transferLines = [];
   let remainingAllDay = allDay;
 
   if (ending && starting) {
-    transferLines.push(`Transfer from ${extractVenueName(ending.event.summary)} to ${extractVenueName(starting.event.summary)}.`);
-    remainingAllDay = allDay.filter(e => e !== ending.event && e !== starting.event);
+    transferLines.push(`Transfer from ${extractVenueName(ending.summary)} to ${extractVenueName(starting.summary)}.`);
+    remainingAllDay = allDay.filter(e => e !== ending && e !== starting);
   }
 
   return [...transferLines, ...remainingAllDay.map(e => formatEventBullet(e, tz)), ...timed.map(e => formatEventBullet(e, tz))];
@@ -197,7 +195,7 @@ export async function sendDailyBrief() {
 
   const sections = [
     renderSection('Birthdays', '🎂', buildBirthdaysSection(events, todayStr, tomorrowStr, tz)),
-    renderSection('Schedule', '📅', buildScheduleSection(events, todayStr, tz)),
+    renderSection('Schedule', '📅', buildScheduleSection(events, todayStr, tomorrowStr, tz)),
     renderSection('Payments', '💰', buildPaymentsSection(events, todayStr, tz)),
     renderSection('Tasks', '✅', buildTasksSection(tasks, tz)),
     renderSection('Reminders', '⏰', reminders),
