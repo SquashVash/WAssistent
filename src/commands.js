@@ -1,7 +1,7 @@
 import { exec, execFile } from 'child_process';
 import { promisify } from 'util';
 import { getSetting, setSetting } from './settings.js';
-import { scheduleDailyBrief, sendDailyBrief, getPriorityTaskPick } from './brief.js';
+import { scheduleDailyBrief, sendDailyBrief } from './brief.js';
 import { handleReminderCommand } from './reminders.js';
 import { fetchTicketEmails, setGmailPollInterval, getGmailPollMinutes, testGmailConnection } from './gmail.js';
 import {
@@ -121,18 +121,6 @@ export async function handleCommand(msg) {
   if (/^send briefing?$/i.test(lower)) {
     await sendDailyBrief();
     return null;
-  }
-
-  if (/^priority task$/i.test(lower)) {
-    try {
-      const { picked, candidateCount, error } = await getPriorityTaskPick();
-      if (error) return `❌ Couldn't get a suggestion: ${error}`;
-      if (!candidateCount) return '📭 No tasks without a due date right now.';
-      if (!picked) return `🤷 Checked ${candidateCount} task(s) with no due date, but nothing stood out.`;
-      return `💡 ${picked.title}`;
-    } catch (err) {
-      return `❌ Failed to check tasks: ${err.message}`;
-    }
   }
 
   if (/^set email interval (\d+)(m|h)?$/i.test(lower)) {
@@ -441,8 +429,7 @@ export async function handleCommand(msg) {
 • \`brief status\` — show current brief time & timezone
 • \`set brief time HH:MM\` — set daily brief time (24h)
 • \`set brief timezone <tz>\` — set timezone (e.g. Europe/London)
-• \`send briefing\` — send the daily brief right now
-• \`priority task\` — test the "If You Have Extra Time" suggestion on its own`,
+• \`send briefing\` — send the daily brief right now`,
     },
     reminders: {
       emoji: '⏰',

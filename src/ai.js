@@ -126,11 +126,11 @@ export async function extractHotelBooking(emailText) {
   }
 }
 
-// Picks the single most worth-doing task from a list of no-due-date tasks (which have
-// no built-in priority field), based purely on the task text. Returns null if the list
-// is empty or nothing stands out.
-export async function suggestPriorityTask(tasks) {
-  if (!tasks.length) return null;
+// Picks up to `count` most worth-doing tasks from a list of no-due-date tasks (which
+// have no built-in priority field), based purely on the task text, ranked most
+// important first. Returns [] if the list is empty or nothing stands out.
+export async function suggestPriorityTasks(tasks, count = 3) {
+  if (!tasks.length) return [];
 
   const list = tasks.map((t, i) => `${i + 1}. ${t.title}${t.notes ? ` — ${t.notes}` : ''}`).join('\n');
 
@@ -139,7 +139,7 @@ export async function suggestPriorityTask(tasks) {
     messages: [
       {
         role: 'system',
-        content: 'You are picking which task from a to-do list is most worth doing today if there\'s spare time. These tasks have no due date and no explicit priority — judge based on the task text alone (urgency implied by wording, consequences of delay, effort vs. impact). Respond with JSON only: {"index": <1-based number>} for the single best task, or {"index": null} if the list is empty or nothing clearly stands out.',
+        content: `You are picking which tasks from a to-do list are most worth doing today if there's spare time. These tasks have no due date and no explicit priority — judge based on the task text alone (urgency implied by wording, consequences of delay, effort vs. impact). Respond with JSON only: {"indices": [<1-based numbers>, ...]}, ranked most important first, with up to ${count} entries. Return fewer (or an empty array) if there aren't that many worth highlighting.`,
       },
       {
         role: 'user',
@@ -151,11 +151,18 @@ export async function suggestPriorityTask(tasks) {
 
   try {
     const parsed = JSON.parse(response.choices[0].message.content);
-    const idx = parsed?.index;
-    if (!idx || idx < 1 || idx > tasks.length) return null;
-    return tasks[idx - 1];
+    const indices = Array.isArray(parsed?.indices) ? parsed.indices : [];
+    const seen = new Set();
+    const picked = [];
+    for (const idx of indices) {
+      if (typeof idx !== 'number' || idx < 1 || idx > tasks.length || seen.has(idx)) continue;
+      seen.add(idx);
+      picked.push(tasks[idx - 1]);
+      if (picked.length >= count) break;
+    }
+    return picked;
   } catch {
-    return null;
+    return [];
   }
 }
 

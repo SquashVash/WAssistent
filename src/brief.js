@@ -1,4 +1,4 @@
-import { generateBriefIntro, suggestPriorityTask } from './ai.js';
+import { generateBriefIntro, suggestPriorityTasks } from './ai.js';
 import { sendMessage } from './messaging.js';
 import { getSetting } from './settings.js';
 import { getUpcomingEvents } from './calendar.js';
@@ -141,30 +141,17 @@ function buildTasksSection(tasks, tz) {
   return lines;
 }
 
-async function pickPriorityTask(tasks, tz) {
+async function buildPriorityTaskSection(tasks, tz) {
   const { noDueDate } = categorizeTasks(tasks, tz);
-  if (!noDueDate.length) return { picked: null, candidateCount: 0 };
+  if (!noDueDate.length) return [];
 
   try {
-    const picked = await suggestPriorityTask(noDueDate);
-    return { picked, candidateCount: noDueDate.length };
+    const picked = await suggestPriorityTasks(noDueDate, 3);
+    return picked.map(t => t.title);
   } catch (err) {
-    console.warn('⚠️ Could not suggest a priority task:', err.message);
-    return { picked: null, candidateCount: noDueDate.length, error: err.message };
+    console.warn('⚠️ Could not suggest priority tasks:', err.message);
+    return [];
   }
-}
-
-async function buildPriorityTaskSection(tasks, tz) {
-  const { picked } = await pickPriorityTask(tasks, tz);
-  return picked ? [picked.title] : [];
-}
-
-// For the `priority task` test command — fetches tasks itself rather than reusing an
-// already-fetched list, so it can be run independently of a full brief.
-export async function getPriorityTaskPick() {
-  const tz = getSetting('briefTimezone', 'DAILY_BRIEF_TIMEZONE', 'UTC');
-  const tasks = await getTasks(tz);
-  return pickPriorityTask(tasks, tz);
 }
 
 function renderSection(title, emoji, lines) {
