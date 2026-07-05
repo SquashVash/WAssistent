@@ -82,14 +82,16 @@ async function moveToTrash(uid) {
 
 // ---- SMTP (sending replies) ----
 
+// Port 465 timed out (ETIMEDOUT), likely blocked by the host — trying 587 (STARTTLS)
+// instead, hardcoded while .env isn't reachable. Revert to an env var once it is,
+// in case 587 turns out to be blocked too and a different value is needed.
+const SMTP_PORT = 587;
+
 function getSmtpTransport(account) {
-  // Port 465 (implicit TLS) is the default, but some hosts block it while leaving 587
-  // (STARTTLS) open — set ZOHO_SMTP_PORT=587 to try the alternative.
-  const port = parseInt(process.env.ZOHO_SMTP_PORT || '465', 10);
   return nodemailer.createTransport({
     host: process.env.ZOHO_SMTP_HOST || 'smtp.zoho.com',
-    port,
-    secure: port === 465,
+    port: SMTP_PORT,
+    secure: SMTP_PORT === 465,
     auth: { user: account.email, pass: account.password },
     // Fail fast instead of nodemailer's default 2-minute connection timeout — if the
     // network/port is blocked (common on some VPS hosts), we want a quick, clear error.
@@ -120,8 +122,7 @@ export async function testSmtpConnection() {
   const transport = getSmtpTransport(account);
   try {
     await transport.verify();
-    const port = parseInt(process.env.ZOHO_SMTP_PORT || '465', 10);
-    return { ok: true, detail: `${account.email} via ${process.env.ZOHO_SMTP_HOST || 'smtp.zoho.com'}:${port}` };
+    return { ok: true, detail: `${account.email} via ${process.env.ZOHO_SMTP_HOST || 'smtp.zoho.com'}:${SMTP_PORT}` };
   } catch (err) {
     return { ok: false, detail: err.code ? `${err.code}: ${err.message}` : err.message };
   }
