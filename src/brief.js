@@ -204,10 +204,12 @@ export async function sendDailyBrief() {
   const remindersSection = renderSection('Reminders', '⏰', reminders);
 
   // Display order keeps Birthdays first; the AI only sees it last so it doesn't
-  // dominate the generated intro sentence.
+  // dominate the generated intro sentence. "If You Have Extra Time" is excluded from
+  // the AI context entirely — it's a nice-to-have, not something worth shaping the
+  // intro sentence around.
   const briefBody = [birthdaysSection, scheduleSection, paymentsSection, tasksSection, prioritySection, remindersSection]
     .filter(Boolean).join('\n\n');
-  const aiContext = [scheduleSection, paymentsSection, tasksSection, prioritySection, remindersSection, birthdaysSection]
+  const aiContext = [scheduleSection, paymentsSection, tasksSection, remindersSection, birthdaysSection]
     .filter(Boolean).join('\n\n');
 
   let intro = '';
