@@ -141,17 +141,30 @@ function buildTasksSection(tasks, tz) {
   return lines;
 }
 
-async function buildPriorityTaskSection(tasks, tz) {
+async function pickPriorityTask(tasks, tz) {
   const { noDueDate } = categorizeTasks(tasks, tz);
-  if (!noDueDate.length) return [];
+  if (!noDueDate.length) return { picked: null, candidateCount: 0 };
 
   try {
     const picked = await suggestPriorityTask(noDueDate);
-    return picked ? [picked.title] : [];
+    return { picked, candidateCount: noDueDate.length };
   } catch (err) {
     console.warn('⚠️ Could not suggest a priority task:', err.message);
-    return [];
+    return { picked: null, candidateCount: noDueDate.length, error: err.message };
   }
+}
+
+async function buildPriorityTaskSection(tasks, tz) {
+  const { picked } = await pickPriorityTask(tasks, tz);
+  return picked ? [picked.title] : [];
+}
+
+// For the `priority task` test command — fetches tasks itself rather than reusing an
+// already-fetched list, so it can be run independently of a full brief.
+export async function getPriorityTaskPick() {
+  const tz = getSetting('briefTimezone', 'DAILY_BRIEF_TIMEZONE', 'UTC');
+  const tasks = await getTasks(tz);
+  return pickPriorityTask(tasks, tz);
 }
 
 function renderSection(title, emoji, lines) {
