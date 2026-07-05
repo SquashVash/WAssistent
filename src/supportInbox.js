@@ -88,6 +88,11 @@ function getSmtpTransport(account) {
     port: 465,
     secure: true,
     auth: { user: account.email, pass: account.password },
+    // Fail fast instead of nodemailer's default 2-minute connection timeout — if the
+    // network/port is blocked (common on some VPS hosts), we want a quick, clear error.
+    connectionTimeout: 15_000,
+    greetingTimeout: 15_000,
+    socketTimeout: 20_000,
   });
 }
 
@@ -102,6 +107,20 @@ async function sendReply(account, email, replyText) {
     inReplyTo: email.messageId,
     references: email.messageId,
   });
+}
+
+// Verifies SMTP login/connectivity without sending an email — for the `status` command.
+export async function testSmtpConnection() {
+  const account = getZohoAccount('support');
+  if (!account) return { ok: false, detail: 'ZOHO_PASSWORD_SUPPORT not set' };
+
+  const transport = getSmtpTransport(account);
+  try {
+    await transport.verify();
+    return { ok: true, detail: `${account.email} via ${process.env.ZOHO_SMTP_HOST || 'smtp.zoho.com'}:465` };
+  } catch (err) {
+    return { ok: false, detail: err.code ? `${err.code}: ${err.message}` : err.message };
+  }
 }
 
 // ---- Reply flow ----

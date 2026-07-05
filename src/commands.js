@@ -11,7 +11,7 @@ import {
 import { testZohoConnections } from './zoho.js';
 import { testCalendarConnection } from './calendar.js';
 import { testTasksConnection } from './tasks.js';
-import { handleSupportMessage, getSupportPollMinutes } from './supportInbox.js';
+import { handleSupportMessage, getSupportPollMinutes, testSmtpConnection } from './supportInbox.js';
 import { sendMessage, sendFile } from './messaging.js';
 import QRCode from 'qrcode';
 import { lookupFlight } from './flights.js';
@@ -238,13 +238,14 @@ export async function handleCommand(msg) {
     const service = statusMatch[1]?.trim().toLowerCase();
 
     if (!service) {
-      const [gmailR, calendarR, tasksR, maigretR, spiderfootR, zohoResults] = await Promise.all([
+      const [gmailR, calendarR, tasksR, maigretR, spiderfootR, zohoResults, smtpR] = await Promise.all([
         testGmailConnection(),
         testCalendarConnection(),
         testTasksConnection(),
         testMaigretAvailability(),
         testSpiderfootConnection(),
         testZohoConnections(),
+        testSmtpConnection(),
       ]);
 
       const lines = [
@@ -254,14 +255,16 @@ export async function handleCommand(msg) {
         formatCheckLine('Maigret', maigretR),
         formatCheckLine('Spiderfoot', spiderfootR),
         ...formatZohoLines(zohoResults),
+        formatCheckLine('SMTP (support send)', smtpR),
       ];
 
       return `*⚙️ Service Status*\n${lines.join('\n')}`;
     }
 
     if (service === 'zoho') {
-      const results = await testZohoConnections();
-      return `*📬 Zoho Connection Status*\n${formatZohoLines(results).join('\n')}`;
+      const [imapResults, smtpResult] = await Promise.all([testZohoConnections(), testSmtpConnection()]);
+      const lines = [...formatZohoLines(imapResults), formatCheckLine('SMTP (support send)', smtpResult)];
+      return `*📬 Zoho Connection Status*\n${lines.join('\n')}`;
     }
 
     const check = SERVICE_STATUS_CHECKS[service];
