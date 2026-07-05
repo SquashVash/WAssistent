@@ -126,6 +126,39 @@ export async function extractHotelBooking(emailText) {
   }
 }
 
+// Picks the single most worth-doing task from a list of no-due-date tasks (which have
+// no built-in priority field), based purely on the task text. Returns null if the list
+// is empty or nothing stands out.
+export async function suggestPriorityTask(tasks) {
+  if (!tasks.length) return null;
+
+  const list = tasks.map((t, i) => `${i + 1}. ${t.title}${t.notes ? ` — ${t.notes}` : ''}`).join('\n');
+
+  const response = await openai.chat.completions.create({
+    model: 'gpt-4o-mini',
+    messages: [
+      {
+        role: 'system',
+        content: 'You are picking which task from a to-do list is most worth doing today if there\'s spare time. These tasks have no due date and no explicit priority — judge based on the task text alone (urgency implied by wording, consequences of delay, effort vs. impact). Respond with JSON only: {"index": <1-based number>} for the single best task, or {"index": null} if the list is empty or nothing clearly stands out.',
+      },
+      {
+        role: 'user',
+        content: list,
+      },
+    ],
+    response_format: { type: 'json_object' },
+  });
+
+  try {
+    const parsed = JSON.parse(response.choices[0].message.content);
+    const idx = parsed?.index;
+    if (!idx || idx < 1 || idx > tasks.length) return null;
+    return tasks[idx - 1];
+  } catch {
+    return null;
+  }
+}
+
 export async function extractFlightInfo(emailText) {
   const response = await openai.chat.completions.create({
     model: 'gpt-4o-mini',

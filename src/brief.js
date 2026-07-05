@@ -1,4 +1,4 @@
-import { generateBriefIntro } from './ai.js';
+import { generateBriefIntro, suggestPriorityTask } from './ai.js';
 import { sendMessage } from './messaging.js';
 import { getSetting } from './settings.js';
 import { getUpcomingEvents } from './calendar.js';
@@ -141,6 +141,19 @@ function buildTasksSection(tasks, tz) {
   return lines;
 }
 
+async function buildPriorityTaskSection(tasks, tz) {
+  const { noDueDate } = categorizeTasks(tasks, tz);
+  if (!noDueDate.length) return [];
+
+  try {
+    const picked = await suggestPriorityTask(noDueDate);
+    return picked ? [picked.title] : [];
+  } catch (err) {
+    console.warn('⚠️ Could not suggest a priority task:', err.message);
+    return [];
+  }
+}
+
 function renderSection(title, emoji, lines) {
   if (!lines.length) return '';
   return `*${emoji} ${title}*\n${lines.map(l => `- ${l}`).join('\n')}`;
@@ -187,13 +200,14 @@ export async function sendDailyBrief() {
   const scheduleSection = renderSection('Schedule', '📅', buildScheduleSection(events, todayStr, tomorrowStr, tz));
   const paymentsSection = renderSection('Payments', '💰', buildPaymentsSection(events, todayStr, tomorrowStr, tz));
   const tasksSection = renderSection('Tasks', '✅', buildTasksSection(tasks, tz));
+  const prioritySection = renderSection('If You Have Extra Time', '💡', await buildPriorityTaskSection(tasks, tz));
   const remindersSection = renderSection('Reminders', '⏰', reminders);
 
   // Display order keeps Birthdays first; the AI only sees it last so it doesn't
   // dominate the generated intro sentence.
-  const briefBody = [birthdaysSection, scheduleSection, paymentsSection, tasksSection, remindersSection]
+  const briefBody = [birthdaysSection, scheduleSection, paymentsSection, tasksSection, prioritySection, remindersSection]
     .filter(Boolean).join('\n\n');
-  const aiContext = [scheduleSection, paymentsSection, tasksSection, remindersSection, birthdaysSection]
+  const aiContext = [scheduleSection, paymentsSection, tasksSection, prioritySection, remindersSection, birthdaysSection]
     .filter(Boolean).join('\n\n');
 
   let intro = '';
