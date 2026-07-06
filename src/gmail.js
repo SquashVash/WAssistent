@@ -117,7 +117,7 @@ async function poll(notify = null, collectOnly = false) {
   results.push(...bookingResults);
 
   if (!collectOnly) {
-    for (const r of bookingResults) await notify?.(r);
+    for (const r of bookingResults) await sendMessage(process.env.MY_CHAT_ID, r);
   }
 
   const auth = getAuthClient();
@@ -140,11 +140,11 @@ async function poll(notify = null, collectOnly = false) {
       const ticketResults = await processMessage(gmail, id);
       results.push(...ticketResults);
       if (!collectOnly) {
-        for (const r of ticketResults) await notify?.(r);
+        for (const r of ticketResults) await sendMessage(process.env.MY_CHAT_ID, r);
       }
     } catch (err) {
       console.error(`❌ Gmail: failed to process message ${id}:`, err.message);
-      if (!collectOnly) await notify?.(`❌ Failed to process email: ${err.message}`);
+      if (!collectOnly) await sendMessage(process.env.MY_CHAT_ID, `❌ Failed to process email: ${err.message}`);
     }
   }
 
