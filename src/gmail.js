@@ -245,12 +245,12 @@ export async function scanForFlightEmails(notify = null) {
   return results;
 }
 
+// Tracks message IDs already scanned for hotel bookings this session
+const scannedBookingIds = new Set();
+
 // Scans for "Your booking is confirmed"-style emails, extracts check-in/check-out via AI,
 // and auto-creates: a silent (brief-only) reminder for check-in, and a normal reminder
-// the evening before check-out. Gmail's unread flag is the only "already handled" marker
-// (set once reminders are successfully scheduled) — no in-memory dedup — so re-marking an
-// email unread in Gmail correctly makes it eligible for reprocessing again, and a failed
-// extraction (e.g. a transient AI error) is naturally retried on the next poll.
+// the evening before check-out.
 export async function scanForHotelBookingEmails() {
   const auth = getAuthClient();
   const gmail = google.gmail({ version: 'v1', auth });
@@ -262,9 +262,12 @@ export async function scanForHotelBookingEmails() {
   });
 
   const messages = res.data.messages || [];
+  const newMessages = messages.filter(({ id }) => !scannedBookingIds.has(id));
+
   const results = [];
 
-  for (const { id } of messages) {
+  for (const { id } of newMessages) {
+    scannedBookingIds.add(id);
     try {
       const msg = await gmail.users.messages.get({ userId: 'me', id, format: 'full' });
       const subject = getHeader(msg.data, 'Subject');
@@ -284,7 +287,7 @@ export async function scanForHotelBookingEmails() {
       const booking = await extractHotelBooking(body);
 
       if (!booking) {
-        console.log(`   ↳ no booking info found — will retry on next poll`);
+        console.log(`   ↳ no booking info found`);
         continue;
       }
 
@@ -304,14 +307,6 @@ export async function scanForHotelBookingEmails() {
         dueDate: addDaysToDateStr(booking.checkOut.date, -1),
         dueTime: CHECKOUT_REMINDER_TIME,
         silent: false,
-      });
-
-      // Mark read now that it's handled — this (not an in-memory set) is what prevents
-      // reprocessing, so re-marking it unread in Gmail is a real, working way to redo it.
-      await gmail.users.messages.modify({
-        userId: 'me',
-        id,
-        requestBody: { removeLabelIds: ['UNREAD'] },
       });
 
       console.log(`   ↳ scheduled check-in (${booking.checkIn.date}) and check-out (${booking.checkOut.date}) reminders for ${hotelName}`);
