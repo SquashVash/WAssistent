@@ -82,18 +82,25 @@ export async function generateBriefIntro(briefBody, todayLabel) {
   return response.choices[0].message.content.trim();
 }
 
-// Turns a plain reminder text into a short, casual WhatsApp-style nudge.
-export async function humanizeReminder(text) {
+// Turns one or more plain reminder texts into a short, casual WhatsApp-style nudge.
+// Pass an array when several reminders fire at once so they're folded into one message.
+export async function humanizeReminder(texts) {
+  const list = Array.isArray(texts) ? texts : [texts];
+
   const response = await openai.chat.completions.create({
     model: 'gpt-4o-mini',
     messages: [
       {
         role: 'system',
-        content: 'Write a short, warm, casual reminder message, like texting a friend. One or two sentences, no markdown, no greeting.',
+        content: list.length > 1
+          ? 'Write a short, warm, casual message covering all of these reminders at once, like texting a friend. Mention each one. A sentence or two per reminder at most, no markdown, no greeting, no numbered/bulleted list.'
+          : 'Write a short, warm, casual reminder message, like texting a friend. One or two sentences, no markdown, no greeting.',
       },
       {
         role: 'user',
-        content: `Remind me to: ${text}`,
+        content: list.length > 1
+          ? `Remind me to:\n${list.map(t => `- ${t}`).join('\n')}`
+          : `Remind me to: ${list[0]}`,
       },
     ],
   });

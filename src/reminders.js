@@ -409,16 +409,19 @@ async function checkDueReminders() {
   const rescheduled = due.filter(r => r.recurrence).map(r => advanceRecurrence(r));
   saveReminders([...remaining, ...rescheduled]);
 
-  for (const r of due) {
-    if (r.silent) continue; // brief-only reminder (e.g. hotel check-in) — never sends a message
+  // brief-only reminders (e.g. hotel check-in) never send a message
+  const toSend = due.filter(r => !r.silent);
+  if (!toSend.length) return;
 
-    try {
-      const message = await humanizeReminder(r.text);
-      await sendMessage(process.env.MY_CHAT_ID, message);
-    } catch (err) {
-      console.error('❌ Failed to send reminder:', err.message);
-      await sendMessage(process.env.MY_CHAT_ID, `⏰ Reminder: ${r.text}`).catch(() => {});
-    }
+  try {
+    const message = await humanizeReminder(toSend.map(r => r.text));
+    await sendMessage(process.env.MY_CHAT_ID, message);
+  } catch (err) {
+    console.error('❌ Failed to send reminder:', err.message);
+    const fallback = toSend.length > 1
+      ? `⏰ Reminders:\n${toSend.map(r => `- ${r.text}`).join('\n')}`
+      : `⏰ Reminder: ${toSend[0].text}`;
+    await sendMessage(process.env.MY_CHAT_ID, fallback).catch(() => {});
   }
 }
 
