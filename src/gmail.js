@@ -24,17 +24,6 @@ const seenIds = new Set();
 
 let pollTimer = null;
 
-// Booking/ticket results found by the automatic background poll (which has no one to
-// notify) are held here until the next `scan` or `fetch emails` call, so they show up
-// as part of that result message instead of as a standalone alert.
-let pendingAutoResults = [];
-
-function drainPendingAutoResults() {
-  const drained = pendingAutoResults;
-  pendingAutoResults = [];
-  return drained;
-}
-
 function getPollMs() {
   return parseInt(getSetting('gmailPollMinutes', 'GMAIL_POLL_MINUTES', DEFAULT_POLL_MINUTES), 10) * 60 * 1000;
 }
@@ -111,15 +100,6 @@ async function processMessage(gmail, messageId) {
 async function poll(notify = null, collectOnly = false) {
   const results = [];
 
-  // Only surface previously-buffered auto-poll results to callers that will actually
-  // report them (a real notify fn, or scan's collectOnly aggregation) — otherwise
-  // leave them queued for later.
-  if (notify || collectOnly) {
-    const pending = drainPendingAutoResults();
-    results.push(...pending);
-    if (notify) for (const r of pending) await notify(r);
-  }
-
   const flightResults = await scanForFlightEmails(notify).catch(err => {
     console.error('❌ Gmail: flight scan failed:', err.message);
     return [];
@@ -137,10 +117,7 @@ async function poll(notify = null, collectOnly = false) {
   results.push(...bookingResults);
 
   if (!collectOnly) {
-    for (const r of bookingResults) {
-      if (notify) await notify(r);
-      else pendingAutoResults.push(r);
-    }
+    for (const r of bookingResults) await sendMessage(process.env.MY_CHAT_ID, r);
   }
 
   const auth = getAuthClient();
@@ -163,18 +140,11 @@ async function poll(notify = null, collectOnly = false) {
       const ticketResults = await processMessage(gmail, id);
       results.push(...ticketResults);
       if (!collectOnly) {
-        for (const r of ticketResults) {
-          if (notify) await notify(r);
-          else pendingAutoResults.push(r);
-        }
+        for (const r of ticketResults) await sendMessage(process.env.MY_CHAT_ID, r);
       }
     } catch (err) {
       console.error(`❌ Gmail: failed to process message ${id}:`, err.message);
-      if (!collectOnly) {
-        const msg = `❌ Failed to process email: ${err.message}`;
-        if (notify) await notify(msg);
-        else pendingAutoResults.push(msg);
-      }
+      if (!collectOnly) await sendMessage(process.env.MY_CHAT_ID, `❌ Failed to process email: ${err.message}`);
     }
   }
 
