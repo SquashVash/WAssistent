@@ -8,6 +8,7 @@ const CHECK_MS = 60_000;
 const INVALID_TIME = Symbol('invalid-time');
 
 let pollTimer = null;
+let lastFired = []; // snapshot of the reminder(s) from the most recent outgoing message, for `snooze`
 
 function getTz() {
   return getSetting('briefTimezone', 'DAILY_BRIEF_TIMEZONE', 'UTC');
@@ -235,9 +236,12 @@ function resolveRecurrenceStart(type, tz, opts = {}) {
 // Advances a fired recurring reminder to its next occurrence (called instead of removing it).
 function advanceRecurrence(reminder) {
   const { recurrence, dueDate } = reminder;
-  if (recurrence.type === 'daily') return { ...reminder, dueDate: addDaysToDateStr(dueDate, 1) };
-  if (recurrence.type === 'weekly') return { ...reminder, dueDate: addDaysToDateStr(dueDate, 7) };
-  if (recurrence.type === 'monthly') return { ...reminder, dueDate: monthlyDateStr(nextMonthRef(dueDate), recurrence.day) };
+  // Reset to the recurrence's canonical time, not the (possibly snoozed) fired dueTime,
+  // so snoozing only affects the occurrence that just fired, not the whole schedule.
+  const dueTime = recurrence.dueTime || reminder.dueTime;
+  if (recurrence.type === 'daily') return { ...reminder, dueDate: addDaysToDateStr(dueDate, 1), dueTime };
+  if (recurrence.type === 'weekly') return { ...reminder, dueDate: addDaysToDateStr(dueDate, 7), dueTime };
+  if (recurrence.type === 'monthly') return { ...reminder, dueDate: monthlyDateStr(nextMonthRef(dueDate), recurrence.day), dueTime };
   return reminder;
 }
 
@@ -260,12 +264,41 @@ function addRecurringReminder(type, text, opts, tz) {
   }
 
   const start = resolveRecurrenceStart(type, tz, recurOpts);
+  recurrence.dueTime = start.dueTime;
 
   const reminders = getReminders();
   reminders.push({ id: makeId(), text, dueDate: start.dueDate, dueTime: start.dueTime, recurrence });
   saveReminders(reminders);
 
   return `✅ I'll remind you to "${text}" ${describeRecurrence(recurrence)} at ${start.dueTime} (starting ${describeDueDate(start.dueDate, tz)}).`;
+}
+
+// Bare duration for snoozing: "snooze", "snooze 15m", "snooze 2h".
+const SNOOZE_RE = /^snooze(?:\s+(\d+)\s*(m|h))?$/i;
+
+function handleSnooze(match, tz) {
+  if (!lastFired.length) return '❌ Nothing to snooze — no reminder has been sent recently.';
+
+  const amount = parseInt(match[1] || '1', 10);
+  const unit = (match[2] || (match[1] ? 'm' : 'h')).toLowerCase();
+  const ms = (unit === 'h' ? amount * 60 : amount) * 60 * 1000;
+  const { dueDate, dueTime } = resolveFromDuration(ms, tz);
+
+  const fired = lastFired;
+  const idsToSnooze = new Set(fired.map(r => r.id));
+  const reminders = getReminders().map(r => (idsToSnooze.has(r.id) ? { ...r, dueDate, dueTime } : r));
+
+  // One-off reminders were already removed from storage once they fired — re-add them.
+  const oneOffIds = new Set(fired.filter(r => !r.recurrence).map(r => r.id));
+  const missingOneOffs = fired.filter(r => oneOffIds.has(r.id) && !reminders.some(x => x.id === r.id));
+  for (const r of missingOneOffs) reminders.push({ id: r.id, text: r.text, dueDate, dueTime });
+
+  saveReminders(reminders);
+  lastFired = [];
+
+  const label = unit === 'h' ? `${amount} hour${amount === 1 ? '' : 's'}` : `${amount} minute${amount === 1 ? '' : 's'}`;
+  if (fired.length === 1) return `😴 Snoozed "${fired[0].text}" by ${label} — next at ${dueTime}.`;
+  return `😴 Snoozed ${fired.length} reminders by ${label} — next at ${dueTime}.`;
 }
 
 function parseErrorMessage() {
@@ -301,6 +334,9 @@ const PLAIN_TO_RE = /^remind\s+me\s+to\s+(.+)$/i;
 export function handleReminderCommand(text) {
   const trimmed = text.trim();
   const tz = getTz();
+
+  const snoozeMatch = trimmed.match(SNOOZE_RE);
+  if (snoozeMatch) return handleSnooze(snoozeMatch, tz);
 
   const recurTimeFirst = trimmed.match(RECUR_TIME_FIRST_RE);
   if (recurTimeFirst) {
@@ -412,6 +448,8 @@ async function checkDueReminders() {
   // brief-only reminders (e.g. hotel check-in) never send a message
   const toSend = due.filter(r => !r.silent);
   if (!toSend.length) return;
+
+  lastFired = toSend.map(r => ({ id: r.id, text: r.text, recurrence: r.recurrence }));
 
   try {
     const message = await humanizeReminder(toSend.map(r => r.text));

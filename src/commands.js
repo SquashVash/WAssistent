@@ -456,7 +456,12 @@ Persisted, shown in today's daily brief until they fire, and sent as an AI-writt
 • \`add a reminder every month on the 15th to <what>\`
 
 • \`reminders\` — list pending reminders
-• \`cancel reminder <n>\` — cancel one by its list number`,
+• \`cancel reminder <n>\` — cancel one by its list number
+
+*😴 Snooze*
+Reply right after a reminder fires:
+• \`snooze\` — push it back 1 hour
+• \`snooze 15m\` / \`snooze 2h\` — push it back by a custom duration`,
     },
     flights: {
       emoji: '✈️',
