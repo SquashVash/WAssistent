@@ -17,6 +17,7 @@ import QRCode from 'qrcode';
 import { lookupFlight } from './flights.js';
 import { trackFlight, untrackFlight, listTracked, getScheduled, unscheduleFlight, rescheduleFlight, clearAllTracked, clearAllScheduled, setFlightPollInterval, getFlightPollMinutes } from './flightTracker.js';
 import { handleDMSMessage } from './dms.js';
+import { handleAddUserFlow } from './addUserFlow.js';
 import { runScan, setScanEnabled, isScanEnabled, setScanTime, getScanTime } from './scan.js';
 import { handleOsintCommand, osintHelp, getOsintPollMinutes, testMaigretAvailability, testSpiderfootConnection } from './osint.js';
 import {
@@ -105,6 +106,13 @@ export async function handleCommand(msg, user) {
     const reminderReply = handleReminderCommand(trimmedBody);
     if (reminderReply !== null) return reminderReply;
   } else if (/^(remind me|reminders|cancel reminder|snooze)\b/i.test(trimmedBody)) {
+    return PERMISSION_DENIED;
+  }
+
+  if (hasPermission(user, 'users')) {
+    const addUserFlowResult = await handleAddUserFlow(msg);
+    if (addUserFlowResult !== false) return addUserFlowResult;
+  } else if (/^add user\b/i.test(trimmedBody)) {
     return PERMISSION_DENIED;
   }
 
