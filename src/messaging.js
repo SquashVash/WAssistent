@@ -49,8 +49,11 @@ export async function sendImage(chatId, base64Data, caption = '') {
 }
 
 // Resolves a chatId (including @lid ids) to the contact's real phone number
-// digits via open-wa's getContact, so accounts that message via an opaque
-// @lid id can still be matched against a user's stored phone number.
+// digits via open-wa's getContact, so an unrecognized @lid chat can be
+// suggested as a link candidate. Only trusts the `number` field returned by
+// the contact lookup itself — NOT `id.user`, which for a plain @c.us id is
+// just an echo of the phone digits already embedded in the (attacker-
+// controlled, since /webhook has no auth) chatId and proves nothing.
 export async function getContactPhoneNumber(chatId) {
   try {
     const res = await axios.post(
@@ -59,8 +62,7 @@ export async function getContactPhoneNumber(chatId) {
       { headers }
     );
     const contact = res.data?.response ?? res.data;
-    const raw = contact?.number || contact?.id?.user || null;
-    return raw ? raw.replace(/\D/g, '') : null;
+    return contact?.number ? contact.number.replace(/\D/g, '') : null;
   } catch (err) {
     console.error(`❌ getContact failed for ${chatId}:`, err.response?.data ?? err.message);
     return null;

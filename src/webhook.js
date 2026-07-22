@@ -2,27 +2,10 @@ import express from 'express';
 import { getAIReply } from './ai.js';
 import { sendMessage, sendAdminMessage, getContactPhoneNumber } from './messaging.js';
 import { handleCommand } from './commands.js';
-import { getUserByChatId, getUserByPhone, linkWhatsappId, hasPermission } from './users.js';
+import { getUserByChatId, getUserByPhone, hasPermission } from './users.js';
 
 const app = express();
 app.use(express.json({ limit: '50mb' }));
-
-async function resolveUser(chatId) {
-  const direct = getUserByChatId(chatId);
-  if (direct) return direct;
-
-  // Accounts that message via an opaque @lid id (instead of phone@c.us) won't
-  // match directly — try resolving the real phone number via open-wa and
-  // auto-link if it belongs to a known user.
-  const phone = await getContactPhoneNumber(chatId);
-  if (!phone) return null;
-  const byPhone = getUserByPhone(phone);
-  if (!byPhone) return null;
-
-  linkWhatsappId(byPhone.phone, chatId);
-  console.log(`🔗 Auto-linked ${byPhone.name} (+${byPhone.phone}) to chat id ${chatId}`);
-  return { ...byPhone, whatsappId: chatId };
-}
 
 async function handleIncomingMessage(msg) {
   const { chatId, body, fromMe } = msg;
@@ -30,12 +13,22 @@ async function handleIncomingMessage(msg) {
   if (fromMe) return;
   if (!body?.trim()) return;
 
-  const user = await resolveUser(chatId);
+  const user = getUserByChatId(chatId);
   if (!user) {
     console.log(`⚠️ Recieved message from unauthorized chat: ${chatId}`);
+
+    // Accounts that message via an opaque @lid id (instead of phone@c.us)
+    // won't match directly — try resolving the real phone number via
+    // open-wa purely to suggest a link candidate. Never auto-link: doing so
+    // based on unauthenticated webhook input would let anyone claiming a
+    // known user's chatId silently take over that user's permissions.
+    const phone = await getContactPhoneNumber(chatId);
+    const byPhone = phone ? getUserByPhone(phone) : null;
+
     await sendAdminMessage(
-      `⚠️ Received message from unauthorized/unlinked chat: \`${chatId}\`\n` +
-      `If this is a known user, link them with:\nlink <phone> ${chatId}`
+      byPhone
+        ? `⚠️ Message from unlinked chat \`${chatId}\` — looks like it might be *${byPhone.name}* (+${byPhone.phone}).\nIf that's correct, confirm with:\nlink ${byPhone.phone} ${chatId}`
+        : `⚠️ Received message from unauthorized/unlinked chat: \`${chatId}\`\nIf this is a known user, link them with:\nlink <phone> ${chatId}`
     );
     return;
   }
@@ -58,6 +51,9 @@ async function handleIncomingMessage(msg) {
 
 app.post('/webhook', async (req, res) => {
   res.sendStatus(200);
+
+  const rawPayload = JSON.stringify(req.body);
+  console.log('📦 Raw webhook payload:', rawPayload.length > 4000 ? `${rawPayload.slice(0, 4000)}…(truncated)` : rawPayload);
 
   const msg = req.body?.message ?? req.body?.data ?? req.body;
 
