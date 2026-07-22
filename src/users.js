@@ -11,7 +11,6 @@ export const ROLE_BUNDLES = {
   owner: [...PERMISSION_TAGS],
   admin: PERMISSION_TAGS.filter(t => t !== 'users'),
   user: ['brief', 'email', 'flights', 'reminders', 'misc', 'help', 'chat', 'status'],
-  custom: [],
 };
 
 let users = load();
