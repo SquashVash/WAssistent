@@ -19,6 +19,7 @@ import { trackFlight, untrackFlight, listTracked, getScheduled, unscheduleFlight
 import { handleDMSMessage } from './dms.js';
 import { runScan, setScanEnabled, isScanEnabled, setScanTime, getScanTime } from './scan.js';
 import { handleOsintCommand, osintHelp, getOsintPollMinutes, testMaigretAvailability, testSpiderfootConnection } from './osint.js';
+import { handleWatchCommand, watchHelp, testChangedetectionConnection, getWatchDefaultMinutes, getWatchCount } from './watch.js';
 
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
@@ -53,6 +54,7 @@ const SERVICE_STATUS_CHECKS = {
   tasks: { label: 'Tasks', run: testTasksConnection },
   maigret: { label: 'Maigret', run: testMaigretAvailability },
   spiderfoot: { label: 'Spiderfoot', run: testSpiderfootConnection },
+  changedetection: { label: 'ChangeDetection', run: testChangedetectionConnection },
 };
 
 function formatCheckLine(label, result) {
@@ -238,12 +240,13 @@ export async function handleCommand(msg) {
     const service = statusMatch[1]?.trim().toLowerCase();
 
     if (!service) {
-      const [gmailR, calendarR, tasksR, maigretR, spiderfootR, zohoResults, smtpR] = await Promise.all([
+      const [gmailR, calendarR, tasksR, maigretR, spiderfootR, changedetectionR, zohoResults, smtpR] = await Promise.all([
         testGmailConnection(),
         testCalendarConnection(),
         testTasksConnection(),
         testMaigretAvailability(),
         testSpiderfootConnection(),
+        testChangedetectionConnection(),
         testZohoConnections(),
         testSmtpConnection(),
       ]);
@@ -254,6 +257,7 @@ export async function handleCommand(msg) {
         formatCheckLine('Tasks', tasksR),
         formatCheckLine('Maigret', maigretR),
         formatCheckLine('Spiderfoot', spiderfootR),
+        formatCheckLine('ChangeDetection', changedetectionR),
         ...formatZohoLines(zohoResults),
         formatCheckLine('SMTP (support send)', smtpR),
       ];
@@ -399,6 +403,7 @@ export async function handleCommand(msg) {
     const flightInterval = getFlightPollMinutes();
     const scanEnabled = isScanEnabled();
     const scanTime = getScanTime();
+    const watchCount = await getWatchCount();
     return `*⚙️ Current Settings*
 
 *Daily Brief*
@@ -418,7 +423,11 @@ export async function handleCommand(msg) {
 • Time: ${scanTime} (${tz})
 
 *OSINT*
-• Poll interval: every ${getOsintPollMinutes()} min`;
+• Poll interval: every ${getOsintPollMinutes()} min
+
+*Web Watches*
+• Active watches: ${watchCount === null ? 'unavailable' : watchCount}
+• Default check interval: every ${getWatchDefaultMinutes()} min`;
   }
 
   const HELP_CATEGORIES = {
@@ -537,13 +546,18 @@ Reply right after a reminder fires:
       label: 'OSINT',
       text: osintHelp(),
     },
+    watch: {
+      emoji: '👁️',
+      label: 'Web Watches',
+      text: watchHelp(),
+    },
     other: {
       emoji: '⚙️',
       label: 'Other',
       text: `*⚙️ Other*
 • \`settings\` — show all current settings
 • \`status\` — check connectivity for every service in one message
-• \`status <service>\` — check one service (gmail, calendar, tasks, zoho, maigret, spiderfoot)
+• \`status <service>\` — check one service (gmail, calendar, tasks, zoho, maigret, spiderfoot, changedetection)
 • \`cointoss\` — flip a coin (heads or tails)
 • \`random <max>\` — random number from 1 to max (e.g. \`random 6\`)
 • \`random <min> <max>\` — random number in range (e.g. \`random 10 100\`)
@@ -605,6 +619,10 @@ Reply right after a reminder fires:
 
   if (/^osint/i.test(lower)) {
     return await handleOsintCommand(text);
+  }
+
+  if (/^watch(\s|$)/i.test(lower)) {
+    return await handleWatchCommand(text);
   }
 
   const qrMatch = text.match(/^qr\s+(.+)$/is);
