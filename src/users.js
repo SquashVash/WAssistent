@@ -55,6 +55,10 @@ function findByPhone(phone) {
   return users.users.find(u => u.phone === digits);
 }
 
+export function getUserByPhone(phone) {
+  return findByPhone(phone) || null;
+}
+
 export function addUser({ name, phone, role = 'user' }) {
   const digits = phone.replace(/\D/g, '');
   if (findByPhone(digits)) return null;

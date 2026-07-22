@@ -1,11 +1,28 @@
 import express from 'express';
 import { getAIReply } from './ai.js';
-import { sendMessage, sendAdminMessage } from './messaging.js';
+import { sendMessage, sendAdminMessage, getContactPhoneNumber } from './messaging.js';
 import { handleCommand } from './commands.js';
-import { getUserByChatId, hasPermission } from './users.js';
+import { getUserByChatId, getUserByPhone, linkWhatsappId, hasPermission } from './users.js';
 
 const app = express();
 app.use(express.json({ limit: '50mb' }));
+
+async function resolveUser(chatId) {
+  const direct = getUserByChatId(chatId);
+  if (direct) return direct;
+
+  // Accounts that message via an opaque @lid id (instead of phone@c.us) won't
+  // match directly — try resolving the real phone number via open-wa and
+  // auto-link if it belongs to a known user.
+  const phone = await getContactPhoneNumber(chatId);
+  if (!phone) return null;
+  const byPhone = getUserByPhone(phone);
+  if (!byPhone) return null;
+
+  linkWhatsappId(byPhone.phone, chatId);
+  console.log(`🔗 Auto-linked ${byPhone.name} (+${byPhone.phone}) to chat id ${chatId}`);
+  return { ...byPhone, whatsappId: chatId };
+}
 
 async function handleIncomingMessage(msg) {
   const { chatId, body, fromMe } = msg;
@@ -13,7 +30,7 @@ async function handleIncomingMessage(msg) {
   if (fromMe) return;
   if (!body?.trim()) return;
 
-  const user = getUserByChatId(chatId);
+  const user = await resolveUser(chatId);
   if (!user) {
     console.log(`⚠️ Recieved message from unauthorized chat: ${chatId}`);
     await sendAdminMessage(
