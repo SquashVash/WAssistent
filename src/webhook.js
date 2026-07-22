@@ -15,11 +15,9 @@ async function handleIncomingMessage(msg) {
 
   const user = getUserByChatId(chatId);
   if (!user) {
+    const phone = chatId.replace(/@.*$/, '');
     console.log(`⚠️ Recieved message from unauthorized chat: ${chatId}`);
-    await sendAdminMessage(
-      `⚠️ Received message from unauthorized/unlinked chat: \`${chatId}\`\n` +
-      `If this is a known user, link them with:\nlink <phone> ${chatId}`
-    );
+    await sendAdminMessage(`⚠️ Received message from unauthorized number: +${phone}`)
     return;
   }
 

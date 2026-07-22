@@ -72,14 +72,6 @@ export function removeUser(phone) {
   return false;
 }
 
-export function linkWhatsappId(phone, chatId) {
-  const user = findByPhone(phone);
-  if (!user) return false;
-  user.whatsappId = chatId;
-  save();
-  return true;
-}
-
 export function setUserRole(phone, role) {
   const user = findByPhone(phone);
   if (!user || !ROLE_BUNDLES[role]) return false;

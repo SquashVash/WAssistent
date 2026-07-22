@@ -22,7 +22,7 @@ import { runScan, setScanEnabled, isScanEnabled, setScanTime, getScanTime } from
 import { handleOsintCommand, osintHelp, getOsintPollMinutes, testMaigretAvailability, testSpiderfootConnection } from './osint.js';
 import {
   getUsers, addUser, removeUser, setUserRole, grantPermission, revokePermission,
-  linkWhatsappId, hasPermission, PERMISSION_TAGS,
+  hasPermission, PERMISSION_TAGS,
 } from './users.js';
 
 const execAsync = promisify(exec);
@@ -33,7 +33,7 @@ const PERMISSION_DENIED = "🚫 You don't have permission to use that command.";
 function formatUsersList() {
   const lines = getUsers().map(u => {
     const extra = u.permissions?.length ? ` (+${u.permissions.join(', ')})` : '';
-    return `• *${u.name}* — +${u.phone} — ${u.role}${extra}\n   id: ${u.whatsappId}`;
+    return `• *${u.name}* — +${u.phone} — ${u.role}${extra}`;
   });
   return `*👥 Users*\n${lines.join('\n')}`;
 }
@@ -619,7 +619,6 @@ Reply right after a reminder fires:
 • \`set role <phone> <owner|admin|user>\` — change a user's role
 • \`grant <phone> <permission>\` — grant an extra permission tag
 • \`revoke <phone> <permission>\` — revoke a permission tag
-• \`link <phone> <chatId>\` — set/fix a user's real WhatsApp chat id (needed for accounts that message via an @lid id instead of phone@c.us — check unauthorized-chat alerts for the id to use)
 Tags: ${PERMISSION_TAGS.join(', ')}`,
     },
   };
@@ -784,14 +783,6 @@ Tags: ${PERMISSION_TAGS.join(', ')}`,
     if (!hasPermission(user, 'users')) return PERMISSION_DENIED;
     const ok = revokePermission(revokeMatch[1], revokeMatch[2].toLowerCase());
     return ok ? '✅ Permission revoked.' : '⚠️ No user found with that phone number.';
-  }
-
-  const linkMatch = text.match(/^link\s+(\S+)\s+(\S+)$/i);
-  if (linkMatch) {
-    if (!hasPermission(user, 'users')) return PERMISSION_DENIED;
-    const [, phone, chatId] = linkMatch;
-    const ok = linkWhatsappId(phone, chatId);
-    return ok ? `✅ Linked +${phone.replace(/\D/g, '')} to \`${chatId}\`.` : '⚠️ No user found with that phone number.';
   }
 
   return false;
