@@ -2,7 +2,6 @@ import express from 'express';
 import { getAIReply } from './ai.js';
 import { sendMessage, sendAdminMessage } from './messaging.js';
 import { handleCommand } from './commands.js';
-import { getUserByChatId, hasPermission } from './users.js';
 
 const app = express();
 app.use(express.json({ limit: '50mb' }));
@@ -12,25 +11,24 @@ async function handleIncomingMessage(msg) {
 
   if (fromMe) return;
   if (!body?.trim()) return;
-
-  const user = getUserByChatId(chatId);
-  if (!user) {
+  if (chatId !== process.env.MY_CHAT_ID) {
     const phone = chatId.replace(/@.*$/, '');
     console.log(`⚠️ Recieved message from unauthorized chat: ${chatId}`);
     await sendAdminMessage(`⚠️ Received message from unauthorized number: +${phone}`)
     return;
   }
 
-  console.log(`📩 [${chatId}] (${user.name}): ${body}`);
 
-  const commandReply = await handleCommand(msg, user);
-  if (commandReply !== false) {
-    if (commandReply) await sendMessage(chatId, commandReply);
-    console.log(`⚙️  Command handled: ${commandReply}`);
-    return;
+  console.log(`📩 [${chatId}]: ${body}`);
+
+  if (chatId === process.env.MY_CHAT_ID) {
+    const commandReply = await handleCommand(msg);
+    if (commandReply !== false) {
+      if (commandReply) await sendMessage(chatId, commandReply);
+      console.log(`⚙️  Command handled: ${commandReply}`);
+      return;
+    }
   }
-
-  if (!hasPermission(user, 'chat')) return;
 
   const reply = await getAIReply(chatId, body);
   await sendMessage(chatId, reply);

@@ -19,23 +19,9 @@ import { trackFlight, untrackFlight, listTracked, getScheduled, unscheduleFlight
 import { handleDMSMessage } from './dms.js';
 import { runScan, setScanEnabled, isScanEnabled, setScanTime, getScanTime } from './scan.js';
 import { handleOsintCommand, osintHelp, getOsintPollMinutes, testMaigretAvailability, testSpiderfootConnection } from './osint.js';
-import {
-  getUsers, addUser, removeUser, setUserRole, grantPermission, revokePermission,
-  hasPermission, PERMISSION_TAGS,
-} from './users.js';
 
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
-
-const PERMISSION_DENIED = "🚫 You don't have permission to use that command.";
-
-function formatUsersList() {
-  const lines = getUsers().map(u => {
-    const extra = u.permissions?.length ? ` (+${u.permissions.join(', ')})` : '';
-    return `• *${u.name}* — +${u.phone} — ${u.role}${extra}`;
-  });
-  return `*👥 Users*\n${lines.join('\n')}`;
-}
 
 function ordinal(n) {
   const suffixes = ['th', 'st', 'nd', 'rd'];
@@ -81,39 +67,25 @@ function formatZohoLines(results) {
   });
 }
 
-export async function handleCommand(msg, user) {
+export async function handleCommand(msg) {
   const body = typeof msg === 'string' ? msg : (msg?.body ?? '');
-  const trimmedBody = body.trim();
 
   // DMS must run first — it intercepts all messages during setup and challenge responses
-  if (hasPermission(user, 'dms')) {
-    const dmsResult = await handleDMSMessage(msg);
-    if (dmsResult !== false) return dmsResult;
-  } else if (/^dms\b/i.test(trimmedBody)) {
-    return PERMISSION_DENIED;
-  }
+  const dmsResult = await handleDMSMessage(msg);
+  if (dmsResult !== false) return dmsResult;
 
   // Support reply flow also intercepts all messages while active
-  if (hasPermission(user, 'support')) {
-    const supportResult = await handleSupportMessage(msg);
-    if (supportResult !== false) return supportResult;
-  } else if (/^support\b/i.test(trimmedBody)) {
-    return PERMISSION_DENIED;
-  }
+  const supportResult = await handleSupportMessage(msg);
+  if (supportResult !== false) return supportResult;
 
-  if (hasPermission(user, 'reminders')) {
-    const reminderReply = handleReminderCommand(trimmedBody);
-    if (reminderReply !== null) return reminderReply;
-  } else if (/^(remind me|reminders|cancel reminder|snooze)\b/i.test(trimmedBody)) {
-    return PERMISSION_DENIED;
-  }
+  const reminderReply = handleReminderCommand(body.trim());
+  if (reminderReply !== null) return reminderReply;
 
   const text = body.trim();
   const lower = text.toLowerCase();
 
   const timeMatch = lower.match(/^set (?:brief )?time (\d{1,2}):(\d{2})$/);
   if (timeMatch) {
-    if (!hasPermission(user, 'brief')) return PERMISSION_DENIED;
     const hour = parseInt(timeMatch[1], 10);
     const minute = parseInt(timeMatch[2], 10);
     if (hour > 23 || minute > 59) return '❌ Invalid time. Use HH:MM (24h format).';
@@ -126,7 +98,6 @@ export async function handleCommand(msg, user) {
 
   const tzMatch = text.match(/^set (?:brief )?timezone (.+)$/i);
   if (tzMatch) {
-    if (!hasPermission(user, 'brief')) return PERMISSION_DENIED;
     const tz = tzMatch[1].trim();
     try {
       new Intl.DateTimeFormat('en-US', { timeZone: tz }).format(new Date());
@@ -141,7 +112,6 @@ export async function handleCommand(msg, user) {
   }
 
   if (/^brief (status|settings)$/i.test(lower)) {
-    if (!hasPermission(user, 'brief')) return PERMISSION_DENIED;
     const tz = getSetting('briefTimezone', 'DAILY_BRIEF_TIMEZONE', 'UTC');
     const hour = parseInt(getSetting('briefHour', 'DAILY_BRIEF_HOUR', '10'), 10);
     const minute = parseInt(getSetting('briefMinute', 'DAILY_BRIEF_MINUTE', '0'), 10);
@@ -149,13 +119,11 @@ export async function handleCommand(msg, user) {
   }
 
   if (/^send briefing?$/i.test(lower)) {
-    if (!hasPermission(user, 'brief')) return PERMISSION_DENIED;
     await sendDailyBrief();
     return null;
   }
 
   if (/^set email interval (\d+)(m|h)?$/i.test(lower)) {
-    if (!hasPermission(user, 'email')) return PERMISSION_DENIED;
     const match = lower.match(/^set email interval (\d+)(m|h)?$/i);
     const value = parseInt(match[1], 10);
     const unit = (match[2] || 'm').toLowerCase();
@@ -166,19 +134,16 @@ export async function handleCommand(msg, user) {
   }
 
   if (/^email interval$/i.test(lower)) {
-    if (!hasPermission(user, 'email')) return PERMISSION_DENIED;
     return `📬 Email check interval: every ${getGmailPollMinutes()} min`;
   }
 
   if (/^scan$/i.test(lower)) {
-    if (!hasPermission(user, 'scan')) return PERMISSION_DENIED;
     await runScan();
     return null;
   }
 
   const scanTimeMatch = lower.match(/^set scan time (\d{1,2}):(\d{2})$/i);
   if (scanTimeMatch) {
-    if (!hasPermission(user, 'scan')) return PERMISSION_DENIED;
     const hour = parseInt(scanTimeMatch[1], 10);
     const minute = parseInt(scanTimeMatch[2], 10);
     if (hour > 23 || minute > 59) return '❌ Invalid time. Use HH:MM (24h format).';
@@ -188,19 +153,16 @@ export async function handleCommand(msg, user) {
   }
 
   if (/^scan automatic on$/i.test(lower)) {
-    if (!hasPermission(user, 'scan')) return PERMISSION_DENIED;
     setScanEnabled(true);
     return '🔍 Automatic scan enabled.';
   }
 
   if (/^scan automatic off$/i.test(lower)) {
-    if (!hasPermission(user, 'scan')) return PERMISSION_DENIED;
     setScanEnabled(false);
     return '🔍 Automatic scan disabled.';
   }
 
   if (/^fetch emails?$/i.test(lower)) {
-    if (!hasPermission(user, 'email')) return PERMISSION_DENIED;
     const chatId = process.env.MY_CHAT_ID;
     const notify = (text) => sendMessage(chatId, text);
     await fetchTicketEmails(notify);
@@ -209,7 +171,6 @@ export async function handleCommand(msg, user) {
 
   const receiptSourcesMatch = text.match(/^receipts?\s+sources(?:\s+(.+))?$/i);
   if (receiptSourcesMatch) {
-    if (!hasPermission(user, 'email')) return PERMISSION_DENIED;
     const rest = receiptSourcesMatch[1]?.trim();
     if (!rest) return formatReceiptSourcesList();
 
@@ -254,7 +215,6 @@ export async function handleCommand(msg, user) {
 
   const receiptsMatch = text.match(/^receipts?(?:\s+(.+))?$/i);
   if (receiptsMatch) {
-    if (!hasPermission(user, 'email')) return PERMISSION_DENIED;
     const arg = receiptsMatch[1]?.trim();
 
     if (!arg) {
@@ -275,7 +235,6 @@ export async function handleCommand(msg, user) {
 
   const statusMatch = text.match(/^status(?:\s+(.+))?$/i);
   if (statusMatch) {
-    if (!hasPermission(user, 'status')) return PERMISSION_DENIED;
     const service = statusMatch[1]?.trim().toLowerCase();
 
     if (!service) {
@@ -320,13 +279,11 @@ export async function handleCommand(msg, user) {
 
   const flightMatch = lower.match(/^flight\s+([a-z0-9]+)$/i);
   if (flightMatch) {
-    if (!hasPermission(user, 'flights')) return PERMISSION_DENIED;
     return await lookupFlight(flightMatch[1]);
   }
 
   const trackMatch = lower.match(/^track\s+([a-z0-9]+)$/i);
   if (trackMatch) {
-    if (!hasPermission(user, 'flights')) return PERMISSION_DENIED;
     const added = trackFlight(trackMatch[1]);
     return added
       ? `✈️ Now tracking *${trackMatch[1].toUpperCase()}* — you'll get updates when something changes.`
@@ -334,7 +291,6 @@ export async function handleCommand(msg, user) {
   }
 
   if (/^untrack\s+(\*|all)$/i.test(lower)) {
-    if (!hasPermission(user, 'flights')) return PERMISSION_DENIED;
     const flights = listTracked();
     if (!flights.length) return '⚠️ No flights currently being tracked.';
     clearAllTracked();
@@ -343,7 +299,6 @@ export async function handleCommand(msg, user) {
 
   const untrackMatch = lower.match(/^untrack\s+([a-z0-9]+)$/i);
   if (untrackMatch) {
-    if (!hasPermission(user, 'flights')) return PERMISSION_DENIED;
     const removed = untrackFlight(untrackMatch[1]);
     return removed
       ? `✅ Stopped tracking *${untrackMatch[1].toUpperCase()}*.`
@@ -352,7 +307,6 @@ export async function handleCommand(msg, user) {
 
   const rescheduleMatch = body.match(/^(?:re)?schedule\s+([a-z0-9]+)(?:\s+(\d{2}-\d{2}-\d{2}))?\s+(\d{2}:\d{2})$/i);
   if (rescheduleMatch) {
-    if (!hasPermission(user, 'flights')) return PERMISSION_DENIED;
     const callsign = rescheduleMatch[1].toUpperCase();
     const timeStr = rescheduleMatch[3];
 
@@ -381,7 +335,6 @@ export async function handleCommand(msg, user) {
   }
 
   if (/^unschedule\s+(\*|all)$/i.test(lower)) {
-    if (!hasPermission(user, 'flights')) return PERMISSION_DENIED;
     const scheduled = Object.keys(getScheduled());
     if (!scheduled.length) return '⚠️ No flights currently scheduled.';
     clearAllScheduled();
@@ -390,7 +343,6 @@ export async function handleCommand(msg, user) {
 
   const unscheduleMatch = lower.match(/^unschedule\s+([a-z0-9]+)$/i);
   if (unscheduleMatch) {
-    if (!hasPermission(user, 'flights')) return PERMISSION_DENIED;
     const removed = unscheduleFlight(unscheduleMatch[1]);
     return removed
       ? `✅ Removed *${unscheduleMatch[1].toUpperCase()}* from schedule.`
@@ -398,7 +350,6 @@ export async function handleCommand(msg, user) {
   }
 
   if (/^tracked$/i.test(lower)) {
-    if (!hasPermission(user, 'flights')) return PERMISSION_DENIED;
     const tz = getSetting('briefTimezone', 'DAILY_BRIEF_TIMEZONE', 'UTC');
     const active = listTracked();
     const scheduled = getScheduled();
@@ -427,12 +378,10 @@ export async function handleCommand(msg, user) {
   }
 
   if (/^flight interval$/i.test(lower)) {
-    if (!hasPermission(user, 'flights')) return PERMISSION_DENIED;
     return `✈️ Flight poll interval: every ${getFlightPollMinutes()} min`;
   }
 
   if (/^set flight interval (\d+)(m|h)?$/i.test(lower)) {
-    if (!hasPermission(user, 'flights')) return PERMISSION_DENIED;
     const match = lower.match(/^set flight interval (\d+)(m|h)?$/i);
     const value = parseInt(match[1], 10);
     const unit = (match[2] || 'm').toLowerCase();
@@ -443,7 +392,6 @@ export async function handleCommand(msg, user) {
   }
 
   if (/^settings$/i.test(lower)) {
-    if (!hasPermission(user, 'settings')) return PERMISSION_DENIED;
     const tz = getSetting('briefTimezone', 'DAILY_BRIEF_TIMEZONE', 'UTC');
     const hour = parseInt(getSetting('briefHour', 'DAILY_BRIEF_HOUR', '10'), 10);
     const minute = parseInt(getSetting('briefMinute', 'DAILY_BRIEF_MINUTE', '0'), 10);
@@ -601,31 +549,15 @@ Reply right after a reminder fires:
 • \`random <min> <max>\` — random number in range (e.g. \`random 10 100\`)
 • \`help <category>\` — show commands for a category`,
     },
-    users: {
-      emoji: '👥',
-      label: 'Users',
-      text: `*👥 Users* (owner only)
-• \`list users\` — list all users and their roles/permissions
-• \`add user <phone> name <name> [role <owner|admin|user>]\` — add a user
-• \`remove user <phone>\` — remove a user
-• \`set role <phone> <owner|admin|user>\` — change a user's role
-• \`grant <phone> <permission>\` — grant an extra permission tag
-• \`revoke <phone> <permission>\` — revoke a permission tag
-Tags: ${PERMISSION_TAGS.join(', ')}`,
-    },
   };
 
   if (/^help$/i.test(lower)) {
-    if (!hasPermission(user, 'help')) return PERMISSION_DENIED;
-    const lines = Object.values(HELP_CATEGORIES)
-      .filter(c => c !== HELP_CATEGORIES.users || hasPermission(user, 'users'))
-      .map(c => `${c.emoji} *${c.label}*`);
+    const lines = Object.values(HELP_CATEGORIES).map(c => `${c.emoji} *${c.label}*`);
     return `*Help — choose a category:*\n\n${lines.join('\n')}\n\nSend \`help <category>\` for commands.\nAnything else is sent to the AI assistant.`;
   }
 
   const logsMatch = lower.match(/^logs(?:\s+(\d+))?$/i);
   if (logsMatch) {
-    if (!hasPermission(user, 'server')) return PERMISSION_DENIED;
     const lines = parseInt(logsMatch[1] || '50', 10);
     const appName = process.env.PM2_APP_NAME || 'bot';
     try {
@@ -641,14 +573,12 @@ Tags: ${PERMISSION_TAGS.join(', ')}`,
   }
 
   if (/^restart$/i.test(lower)) {
-    if (!hasPermission(user, 'server')) return PERMISSION_DENIED;
     const appName = process.env.PM2_APP_NAME || 'bot';
     setTimeout(() => execAsync(`pm2 restart ${appName}`).catch(console.error), 500);
     return '🔄 Restarting bot...';
   }
 
   if (/^refresh$/i.test(lower)) {
-    if (!hasPermission(user, 'server')) return PERMISSION_DENIED;
     const appName = process.env.PM2_APP_NAME || 'bot';
     try {
       const { stdout: pullOut } = await execAsync('git pull');
@@ -664,25 +594,21 @@ Tags: ${PERMISSION_TAGS.join(', ')}`,
 
   const helpCatMatch = lower.match(/^help\s+(.+)$/i);
   if (helpCatMatch) {
-    if (!hasPermission(user, 'help')) return PERMISSION_DENIED;
     const key = helpCatMatch[1].trim().toLowerCase();
     const cat = HELP_CATEGORIES[key] || Object.values(HELP_CATEGORIES).find(c => c.label.toLowerCase() === key);
     if (!cat) {
       const names = Object.keys(HELP_CATEGORIES).join(', ');
       return `❌ Unknown category. Try: ${names}`;
     }
-    if (cat === HELP_CATEGORIES.users && !hasPermission(user, 'users')) return PERMISSION_DENIED;
     return cat.text;
   }
 
   if (/^osint/i.test(lower)) {
-    if (!hasPermission(user, 'osint')) return PERMISSION_DENIED;
     return await handleOsintCommand(text);
   }
 
   const qrMatch = text.match(/^qr\s+(.+)$/is);
   if (qrMatch) {
-    if (!hasPermission(user, 'misc')) return PERMISSION_DENIED;
     const qrText = qrMatch[1].trim();
     const chatId = process.env.MY_CHAT_ID;
     try {
@@ -695,13 +621,11 @@ Tags: ${PERMISSION_TAGS.join(', ')}`,
   }
 
   if (/^cointoss$/i.test(lower)) {
-    if (!hasPermission(user, 'misc')) return PERMISSION_DENIED;
     return Math.random() < 0.5 ? '🪙 Heads' : '🪙 Tails';
   }
 
   const randomMatch = lower.match(/^random\s+(-?\d+)(?:\s+(-?\d+))?$/i);
   if (randomMatch) {
-    if (!hasPermission(user, 'misc')) return PERMISSION_DENIED;
     const a = parseInt(randomMatch[1], 10);
     const b = randomMatch[2] !== undefined ? parseInt(randomMatch[2], 10) : null;
     const min = b === null ? 1 : Math.min(a, b);
@@ -712,7 +636,6 @@ Tags: ${PERMISSION_TAGS.join(', ')}`,
 
   // git <subcommand> [args...]
   if (/^git\s+\S/i.test(lower)) {
-    if (!hasPermission(user, 'server')) return PERMISSION_DENIED;
     const raw = text.trim().slice(4).trim();
     // Shell-word split (handles quoted strings)
     const args = raw.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || [];
@@ -730,51 +653,6 @@ Tags: ${PERMISSION_TAGS.join(', ')}`,
       const out = ((err.stdout || '') + (err.stderr || '')).trim();
       return `❌ git error:\n\`\`\`\n${out || err.message}\n\`\`\``;
     }
-  }
-
-  if (/^list users$/i.test(lower)) {
-    if (!hasPermission(user, 'users')) return PERMISSION_DENIED;
-    return formatUsersList();
-  }
-
-  const addUserMatch = text.match(/^add user\s+(\S+)\s+name\s+(.+?)(?:\s+role\s+(owner|admin|user))?$/i);
-  if (addUserMatch) {
-    if (!hasPermission(user, 'users')) return PERMISSION_DENIED;
-    const [, phone, name, role] = addUserMatch;
-    const added = addUser({ name: name.trim(), phone, role: role?.toLowerCase() || 'user' });
-    return added
-      ? `✅ Added *${added.name}* (+${added.phone}) as *${added.role}*.`
-      : `⚠️ A user with phone +${phone.replace(/\D/g, '')} already exists.`;
-  }
-
-  const removeUserMatch = text.match(/^remove user\s+(\S+)$/i);
-  if (removeUserMatch) {
-    if (!hasPermission(user, 'users')) return PERMISSION_DENIED;
-    const removed = removeUser(removeUserMatch[1]);
-    return removed ? '✅ User removed.' : '⚠️ No user found with that phone number.';
-  }
-
-  const setRoleMatch = text.match(/^set role\s+(\S+)\s+(owner|admin|user)$/i);
-  if (setRoleMatch) {
-    if (!hasPermission(user, 'users')) return PERMISSION_DENIED;
-    const ok = setUserRole(setRoleMatch[1], setRoleMatch[2].toLowerCase());
-    return ok ? '✅ Role updated.' : '⚠️ No user found with that phone number.';
-  }
-
-  const grantMatch = text.match(/^grant\s+(\S+)\s+(\S+)$/i);
-  if (grantMatch) {
-    if (!hasPermission(user, 'users')) return PERMISSION_DENIED;
-    const tag = grantMatch[2].toLowerCase();
-    if (!PERMISSION_TAGS.includes(tag)) return `❌ Unknown permission. Try: ${PERMISSION_TAGS.join(', ')}`;
-    const ok = grantPermission(grantMatch[1], tag);
-    return ok ? `✅ Granted *${tag}* permission.` : '⚠️ No user found with that phone number.';
-  }
-
-  const revokeMatch = text.match(/^revoke\s+(\S+)\s+(\S+)$/i);
-  if (revokeMatch) {
-    if (!hasPermission(user, 'users')) return PERMISSION_DENIED;
-    const ok = revokePermission(revokeMatch[1], revokeMatch[2].toLowerCase());
-    return ok ? '✅ Permission revoked.' : '⚠️ No user found with that phone number.';
   }
 
   return false;
