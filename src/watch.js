@@ -35,7 +35,7 @@ export async function cdCreate(url, { title, minutes }) {
     url,
     title: title || url,
     time_between_check: { hours: 0, minutes, seconds: 0 },
-    notification_format: 'Text',
+    notification_format: 'text',
     notification_title: '{{watch_title}}',
     notification_body: NOTIFY_BODY,
     notification_urls: [notificationUrl()],
