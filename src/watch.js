@@ -35,6 +35,8 @@ export async function cdCreate(url, { title, minutes }) {
     url,
     title: title || url,
     time_between_check: { hours: 0, minutes, seconds: 0 },
+    // Without this, changedetection ignores time_between_check and uses the global interval
+    time_between_check_use_default: false,
     notification_format: 'text',
     notification_title: '{{watch_title}}',
     notification_body: NOTIFY_BODY,
