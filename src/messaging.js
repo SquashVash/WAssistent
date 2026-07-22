@@ -47,22 +47,3 @@ export async function sendImage(chatId, base64Data, caption = '') {
     { headers }
   );
 }
-
-// Resolves a chatId (including @lid ids) to the contact's real phone number
-// digits via open-wa's getContact, so accounts that message via an opaque
-// @lid id can still be matched against a user's stored phone number.
-export async function getContactPhoneNumber(chatId) {
-  try {
-    const res = await axios.post(
-      `${OPENWA_URL}/sessions/${SESSION_ID}/contacts/get-contact`,
-      { contactId: chatId },
-      { headers }
-    );
-    const contact = res.data?.response ?? res.data;
-    const raw = contact?.number || contact?.id?.user || null;
-    return raw ? raw.replace(/\D/g, '') : null;
-  } catch (err) {
-    console.error(`❌ getContact failed for ${chatId}:`, err.response?.data ?? err.message);
-    return null;
-  }
-}
